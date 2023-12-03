@@ -1,0 +1,5 @@
+Model: deberta-v3-xsmall_charlie_lr_5e-6 Log Starts
+Model: deberta-v3-xsmall_charlie_lr_5e-6, Checkpoint: 500, Average Softmax: 0.49257719838633474
+Model: deberta-v3-xsmall_charlie_lr_5e-6, Checkpoint: 1000, Average Softmax: 0.48487155144075056
+Model: deberta-v3-xsmall_charlie_lr_5e-6, Checkpoint: 1500, Average Softmax: 0.4807605587738247
+Model: deberta-v3-xsmall_charlie_lr_5e-6, Checkpoint: 2000, Average Softmax: 0.47792259645575974
