@@ -1,0 +1,6 @@
+Model: ToxicityModel Log Starts
+Model: ToxicityModel Log Starts
+Model: ToxicityModel, Checkpoint: 500, Average Softmax: 0.014965838690553982
+Model: ToxicityModel, Checkpoint: 1000, Average Softmax: 0.011981270394680655
+Model: ToxicityModel, Checkpoint: 1500, Average Softmax: 0.01050897735523688
+Model: ToxicityModel, Checkpoint: 2000, Average Softmax: 0.01020799154711438

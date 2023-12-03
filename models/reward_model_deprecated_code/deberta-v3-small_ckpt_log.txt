@@ -1,0 +1,6 @@
+Model: deberta-v3-small Log Starts
+Model: deberta-v3-small Log Starts
+Model: deberta-v3-small, Checkpoint: 500, Average Softmax: 0.4795024718435007
+Model: deberta-v3-small, Checkpoint: 1000, Average Softmax: 0.4664729868532509
+Model: deberta-v3-small, Checkpoint: 1500, Average Softmax: 0.4582199113432367
+Model: deberta-v3-small, Checkpoint: 2000, Average Softmax: 0.45068620573261947
