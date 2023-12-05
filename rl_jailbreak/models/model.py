@@ -37,7 +37,7 @@ class TargetModel(Model):
         return self.tokenizer.batch_decode(outputs)
     
 class RewardModel(Model):
-    def __init__(self, model, tokenizer, device):
+    def __init__(self, model, tokenizer):
         self.model = model
         self.tokenizer = tokenizer
         self.peft_config = LoraConfig(
