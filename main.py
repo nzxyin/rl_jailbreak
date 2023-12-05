@@ -1,4 +1,4 @@
-from models.model import load_generator, load_target, load_reward
+from rl_jailbreak import load_generator, load_target, load_reward
 from trl import PPOTrainer, PPOConfig
 from tqdm import tqdm      
 import argparse  
@@ -40,6 +40,7 @@ def main(args):
         tokenizer=generator.tokenizer,
     )
 
+    # TODO update training loop
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
         # query_tensors = batch["input_ids"]
         query_tensors = [generator.tokenizer.encode("") for _ in range(len(batch["input_ids"]))]
