@@ -13,7 +13,7 @@ def main(args):
         learning_rate=args.ppo_lr,
     )
 
-    generator = load_generator(ppo_config.model_name)
+    generator = load_generator(args.generator_model)
     target = load_target(args.target_model)
     reward_model = load_reward(args.reward_model)
 
