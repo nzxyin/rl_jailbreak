@@ -18,8 +18,8 @@ def load_reward(reward_name):
     return RewardModel(model, tokenizer)
 
 class Model(object):
-    def __init__(self, model, tokenizer, device) -> None:
-        self.model = model.to(device)
+    def __init__(self, model, tokenizer) -> None:
+        self.model = model
         self.tokenizer = tokenizer
     
     def generate(self, input):
@@ -37,7 +37,7 @@ class TargetModel(Model):
         return self.tokenizer.batch_decode(outputs)
     
 class RewardModel(Model):
-    def __init__(self, model, tokenizer, device):
+    def __init__(self, model, tokenizer):
         self.model = model
         self.tokenizer = tokenizer
         self.peft_config = LoraConfig(
