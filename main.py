@@ -103,6 +103,9 @@ def main(args):
         # if not os.path.exists(args.save_dir):
         #     os.makedirs(args.save_dir)
         # ppo_trainer.save_model(args.save_dir)
+        # generator.model.push_to_hub("my-fine-tuned-model-ppo")
+        generator.model.save_pretrained("my-fine-tuned-model-ppo") # source: https://huggingface.co/docs/trl/quickstart, only the most recent one got saved. FIXME
+
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
@@ -159,6 +162,13 @@ if __name__=="__main__":
         "--dataset",
         default="./datasets/ppo_dataset.csv",
         help = "Path to PPO dataset.",
+        type = pathlib.Path,
+    )
+    
+    parser.add_argument(
+        "--save_dir",
+        default="./results",
+        help = "Path to save the model.",
         type = pathlib.Path,
     )
     
