@@ -1,24 +1,34 @@
-from rl_jailbreak import load_generator, load_target, load_reward
+from rl_jailbreak.models.model import load_generator, load_target, load_reward
 from trl import PPOTrainer, PPOConfig
 from tqdm import tqdm      
 import argparse  
 import pathlib
 import pandas as pd
-from torch.utils.data import Dataset
+from datasets import Dataset
 
 def main(args):
 
     ppo_config = PPOConfig(
         model_name=args.generator_model,
         learning_rate=args.ppo_lr,
+        batch_size=10,
     )
 
     generator = load_generator(args.generator_model)
     target = load_target(args.target_model)
     reward_model = load_reward(args.reward_model)
 
-    dataset = pd.read_csv(args.dataset)["question"]
-    dataset = ... # TODO convert dataset to pytorch DataSet (compatability for PPOTrainer class)
+    df = pd.read_csv(args.dataset)    
+    # rename the column "question" to "query"
+    df = df.rename(columns={"question": "query"})
+    
+    # remove the other columns risk_area,types_of_harm,source,new_category
+    df = df.drop(columns=["Unnamed: 0", "risk_area", "types_of_harm", "source", "new_category"])
+    print(df)
+    dataset = Dataset.from_pandas(df)
+    print(dataset)
+    
+    # TODO encode dataset using target model and slice <BOS> token off
 
     generator_kwargs = {
         "min_length": -1, # don't ignore the EOS token (see above)
@@ -36,24 +46,34 @@ def main(args):
     ppo_trainer = PPOTrainer(
         model=generator.model,
         config=ppo_config,
-        train_dataset=dataset,
+        dataset=dataset,
         tokenizer=generator.tokenizer,
     )
 
-    # TODO update training loop
-    for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
-        # query_tensors = batch["input_ids"]
-        query_tensors = [generator.tokenizer.encode("") for _ in range(len(batch["input_ids"]))]
-        response_tensors = ppo_trainer.generate(query_tensors, **generator_kwargs)
-        batch["response"] = [generator.tokenizer.decode(r.squeeze()) for r in response_tensors]
+    # TODO: setup W&B logging
 
-        target_outputs = target.generate(batch["response"])
+    # TODO update training loop
+    # FIXME: rename variables here for extra clarity
+    for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
+        print(batch) # this is doing the right thinng here.
+
+        # TODO: maybe change input string for generator (random word/sequence)?
+        generator_input_tokens = [ppo_trainer.tokenizer.encode("") for _ in range(ppo_config.batch_size)]
+        response_tensors = ppo_trainer.generate(generator_input_tokens, **generator_kwargs)
+        batch["attack"] = [ppo_trainer.tokenizer.decode(r.squeeze()) for r in response_tensors]
+        
+        # TODO: convert target into pipeline object?
+        target_outputs = target.generate([attack + query for attack, query in zip(batch["attack"], batch["query"])])
 
         #### Compute reward score
+        # TODO: check type and shape of output. HIGH PRIO
+        # TODO: convert reward into pipeline object? LOW PRIO
         rewards = reward_model.generate(target_outputs)
 
+        # TODO: Add diversity metrics here
+
         #### Run PPO step
-        stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
+        stats = ppo_trainer.step(generator_input_tokens, response_tensors, rewards) # Charlie: look here, see how ppo_trainer.step is doing
         ppo_trainer.log_stats(stats, batch, rewards)
   
         #### Save model
@@ -93,12 +113,28 @@ if __name__=="__main__":
     )
     ##################################################
 
+    # TODO: Add reward parameters
+    ########### Target model parameters ##########
+    parser.add_argument(
+        "--reward-model",
+        default = "nicholasKluge/ToxicityModel",
+        help = "Name of reward model.",
+        choices=["nicholasKluge/ToxicityModel"]
+    )
+    parser.add_argument(
+        "--reward-max-tokens",
+        type = int,
+        default = 512,
+        help = "Maximum number of input tokens for the reward."
+    )
+    ##################################################
+
     ########### Dataset parameters ##########
     parser.add_argument(
         "--dataset",
-        required = True,
+        default="./rl_jailbreak/datasets/ppo_dataset.csv",
         help = "Path to PPO dataset.",
-        type = pathlib.Path
+        type = pathlib.Path,
     )
     
     ##################################################
@@ -116,3 +152,4 @@ if __name__=="__main__":
 
     args = parser.parse_args()
     main(args)
+    
