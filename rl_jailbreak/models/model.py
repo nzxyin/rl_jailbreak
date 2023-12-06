@@ -42,7 +42,9 @@ class TargetModel(Model):
         return self.tokenizer.batch_decode(outputs)
     
 class RewardModel(Model):
-<<<<<<< HEAD
+    def __init__(self, model, tokenizer) -> None:
+        super().__init__(model, tokenizer)
+        self.model.eval()
         # self.peft_config = LoraConfig(
         #     task_type=TaskType.SEQ_CLS,
         #     inference_mode=False,
@@ -51,9 +53,6 @@ class RewardModel(Model):
         #     lora_dropout=0.1,
         # )
         # self.reward_config = None
-    def __init__(self, model, tokenizer) -> None:
-        super().__init__(model, tokenizer)
-        self.model.eval()
 
     def generate(self, input):
         tokens = self.tokenizer.encode(input, return_tensors='pt', return_attention_mask=True)
@@ -68,38 +67,3 @@ class RewardModel(Model):
     #         peft_config=self.peft_config,
     #     )
     #     trainer.train()
-=======
-    def __init__(self, model, tokenizer):
-        self.model = model
-        self.tokenizer = tokenizer
-        self.peft_config = LoraConfig(
-            task_type=TaskType.SEQ_CLS,
-            inference_mode=False,
-            r=8,
-            lora_alpha=32,
-            lora_dropout=0.1,
-        )
-        self.reward_config = None
-
-    def generate(self, input):
-        self.model.eval()
-        tokens = self.tokenizer.encode(input, 
-                    truncation=True,
-                    max_length=512,
-                    return_token_type_ids=False,
-                    return_tensors='pt', 
-                    return_attention_mask=True)
-        return self.model(**tokens)[0].item()
-
-
-    # This doesn't get called for now, so dead code
-    def train(self, dataset):
-        trainer = RewardTrainer(
-            model=self.model,
-            args=self.reward_config,
-            tokenizer=self.tokenizer,
-            train_dataset=dataset,
-            peft_config=self.peft_config,
-        )
-        trainer.train()
->>>>>>> origin/main
