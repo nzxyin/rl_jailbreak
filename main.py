@@ -109,7 +109,7 @@ if __name__=="__main__":
 
     ########### Generator model parameters ##########
     parser.add_argument(
-        "--generator-model",
+        "--generator-model", 
         default = "gpt2-medium",
         help = "Name of attack generator model.",
         choices=["gpt2-medium"]
