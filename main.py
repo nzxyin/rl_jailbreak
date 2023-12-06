@@ -55,10 +55,11 @@ def main(args):
     # TODO update training loop
     # FIXME: rename variables here for extra clarity
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
-        print(batch) # this is doing the right thinng here.
+        print(f"Epoch {epoch}")
 
         # TODO: maybe change input string for generator (random word/sequence)?
-        generator_input_tokens = [ppo_trainer.tokenizer.encode("") for _ in range(ppo_config.batch_size)]
+        generator_input_tokens = [ppo_trainer.tokenizer.encode("the", return_tensors='pt') for _ in range(ppo_config.batch_size)]
+        # print(generator_input_tokens.shape)
         response_tensors = ppo_trainer.generate(generator_input_tokens, **generator_kwargs)
         batch["attack"] = [ppo_trainer.tokenizer.decode(r.squeeze()) for r in response_tensors]
         

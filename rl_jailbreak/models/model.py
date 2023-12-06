@@ -21,6 +21,7 @@ class Model(object):
     def __init__(self, model, tokenizer) -> None:
         self.model = model
         self.tokenizer = tokenizer
+        self.tokenizer.pad_token = self.tokenizer.eos_token
     
     def generate(self, input):
         raise NotImplementedError()
@@ -31,37 +32,38 @@ class GeneratorModel(Model):
         return self.model.generate(input_tensor)
     
 class TargetModel(Model):
+    def __init__(self, model, tokenizer) -> None:
+        super().__init__(model, tokenizer)
+        self.model.eval()
+
     def generate(self, input):
         input_tensor = self.tokenizer.encode(input, return_tensors="pt")
         outputs = self.model.generate(input_tensor)
         return self.tokenizer.batch_decode(outputs)
     
 class RewardModel(Model):
-    def __init__(self, model, tokenizer):
-        self.model = model
-        self.tokenizer = tokenizer
-        self.peft_config = LoraConfig(
-            task_type=TaskType.SEQ_CLS,
-            inference_mode=False,
-            r=8,
-            lora_alpha=32,
-            lora_dropout=0.1,
-        )
-        self.reward_config = RewardConfig(
-
-        )
+        # self.peft_config = LoraConfig(
+        #     task_type=TaskType.SEQ_CLS,
+        #     inference_mode=False,
+        #     r=8,
+        #     lora_alpha=32,
+        #     lora_dropout=0.1,
+        # )
+        # self.reward_config = None
+    def __init__(self, model, tokenizer) -> None:
+        super().__init__(model, tokenizer)
+        self.model.eval()
 
     def generate(self, input):
-        self.model.eval()
         tokens = self.tokenizer.encode(input, return_tensors='pt', return_attention_mask=True)
         return self.model(**tokens)[0].item()
 
-    def train(self, dataset):
-        trainer = RewardTrainer(
-            model=self.model,
-            args=self.reward_config,
-            tokenizer=self.tokenizer,
-            train_dataset=dataset,
-            peft_config=self.peft_config,
-        )
-        trainer.train()
+    # def train(self, dataset):
+    #     trainer = RewardTrainer(
+    #         model=self.model,
+    #         args=self.reward_config,
+    #         tokenizer=self.tokenizer,
+    #         train_dataset=dataset,
+    #         peft_config=self.peft_config,
+    #     )
+    #     trainer.train()
