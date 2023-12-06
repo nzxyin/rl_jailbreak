@@ -47,15 +47,20 @@ class RewardModel(Model):
             lora_alpha=32,
             lora_dropout=0.1,
         )
-        self.reward_config = RewardConfig(
-
-        )
+        self.reward_config = None
 
     def generate(self, input):
         self.model.eval()
-        tokens = self.tokenizer.encode(input, return_tensors='pt', return_attention_mask=True)
+        tokens = self.tokenizer.encode(input, 
+                    truncation=True,
+                    max_length=512,
+                    return_token_type_ids=False,
+                    return_tensors='pt', 
+                    return_attention_mask=True)
         return self.model(**tokens)[0].item()
 
+
+    # This doesn't get called for now, so dead code
     def train(self, dataset):
         trainer = RewardTrainer(
             model=self.model,
