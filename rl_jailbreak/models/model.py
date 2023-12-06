@@ -1,6 +1,7 @@
 from peft import LoraConfig, TaskType
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoModelForSequenceClassification, AutoModelForCausalLM, AutoTokenizer
 from trl import RewardTrainer, RewardConfig, AutoModelForCausalLMWithValueHead
+from typing import Union, Tuple
 
 def load_generator(generator_name):
     tokenizer = AutoTokenizer.from_pretrained(generator_name)
@@ -9,12 +10,12 @@ def load_generator(generator_name):
 
 def load_target(target_name):
     tokenizer = AutoTokenizer.from_pretrained(target_name)
-    model = AutoModelForCausalLMWithValueHead.from_pretrained(target_name, device_map="auto")
+    model = AutoModelForCausalLM.from_pretrained(target_name, device_map="auto")
     return TargetModel(model, tokenizer)
 
 def load_reward(reward_name):
-    tokenizer = AutoTokenizer.from_pretrained(reward_name, device_map="auto")
-    model = AutoModelForSequenceClassification.from_pretrained(reward_name)
+    tokenizer = AutoTokenizer.from_pretrained(reward_name)
+    model = AutoModelForSequenceClassification.from_pretrained(reward_name, device_map="auto")
     return RewardModel(model, tokenizer)
 
 class Model(object):
@@ -28,16 +29,17 @@ class Model(object):
     
 class GeneratorModel(Model):
     def generate(self, input):
-        input_tensor = self.tokenizer.encode(input, return_tensors="pt")
+        input_tensor = self.tokenizer(input, return_tensors="pt")
         return self.model.generate(input_tensor)
     
 class TargetModel(Model):
     def __init__(self, model, tokenizer) -> None:
         super().__init__(model, tokenizer)
         self.model.eval()
+        self.device = self.model.device
 
-    def generate(self, input):
-        input_tensor = self.tokenizer.encode(input, return_tensors="pt")
+    def generate(self, input: list[str]):
+        input_tensor = self.tokenizer(input, return_tensors="pt", padding='max_length', return_attention_mask=True, truncation=True, max_length=50).input_ids.to(self.device)
         outputs = self.model.generate(input_tensor)
         return self.tokenizer.batch_decode(outputs)
     
@@ -45,6 +47,7 @@ class RewardModel(Model):
     def __init__(self, model, tokenizer) -> None:
         super().__init__(model, tokenizer)
         self.model.eval()
+        self.device = self.model.device
         # self.peft_config = LoraConfig(
         #     task_type=TaskType.SEQ_CLS,
         #     inference_mode=False,
@@ -55,8 +58,8 @@ class RewardModel(Model):
         # self.reward_config = None
 
     def generate(self, input):
-        tokens = self.tokenizer.encode(input, return_tensors='pt', return_attention_mask=True)
-        return self.model(**tokens)[0].item()
+        tokens = self.tokenizer(input, return_tensors='pt', return_attention_mask=True, padding='max_length', truncation=True, max_length=50).input_ids.to(self.device)
+        return self.model(tokens)
 
     # def train(self, dataset):
     #     trainer = RewardTrainer(

@@ -11,7 +11,7 @@ def main(args):
     ppo_config = PPOConfig(
         model_name=args.generator_model,
         learning_rate=args.ppo_lr,
-        batch_size=10,
+        batch_size=5,
     )
 
     generator = load_generator(args.generator_model)
@@ -24,10 +24,8 @@ def main(args):
     
     # remove the other columns risk_area,types_of_harm,source,new_category
     df = df.drop(columns=["Unnamed: 0", "risk_area", "types_of_harm", "source", "new_category"])
-    print(df)
+
     dataset = Dataset.from_pandas(df)
-    print(dataset)
-    
     # TODO encode dataset using target model and slice <BOS> token off
 
     generator_kwargs = {
@@ -49,32 +47,44 @@ def main(args):
         dataset=dataset,
         tokenizer=generator.tokenizer,
     )
+    device = ppo_trainer.accelerator.device
 
     # TODO: setup W&B logging
 
     # TODO update training loop
-    # FIXME: rename variables here for extra clarity
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
         print(f"Epoch {epoch}")
 
-        # TODO: maybe change input string for generator (random word/sequence)?
-        generator_input_tokens = [ppo_trainer.tokenizer.encode("the", return_tensors='pt') for _ in range(ppo_config.batch_size)]
-        # print(generator_input_tokens.shape)
-        response_tensors = ppo_trainer.generate(generator_input_tokens, **generator_kwargs)
-        batch["attack"] = [ppo_trainer.tokenizer.decode(r.squeeze()) for r in response_tensors]
+        # TODO: change back to list[Tensor]
+        generator_input_tokens = ppo_trainer.tokenizer(["the"] * ppo_config.batch_size, return_tensors='pt', padding='max_length', return_attention_mask=True, truncation=True, max_length=50).input_ids.to(device)
+        print(generator_input_tokens)
+        # print(ppo_trainer.generate(ppo_trainer.tokenizer.encode("the", return_tensors='pt')[0].to(device)))
+        # TODO: change back to list[Tensor]
+        generator_output_tensors = ppo_trainer.model.generate(generator_input_tokens, **generator_kwargs)
         
+        batch["attack"] = ppo_trainer.tokenizer.batch_decode(generator_output_tensors)
+        # print(batch["attack"])
+        # print(batch["query"])
+        target_inputs = [" ".join([attack, query]) for attack, query in zip(batch["attack"], batch["query"])]
+        print(target_inputs)
+
         # TODO: convert target into pipeline object?
-        target_outputs = target.generate([attack + query for attack, query in zip(batch["attack"], batch["query"])])
+        target_outputs = target.generate(target_inputs)
+        print(target_outputs)
 
         #### Compute reward score
         # TODO: check type and shape of output. HIGH PRIO
         # TODO: convert reward into pipeline object? LOW PRIO
+        
+        # TODO: return list of tensors
         rewards = reward_model.generate(target_outputs)
+        print(rewards)
 
         # TODO: Add diversity metrics here
 
         #### Run PPO step
-        stats = ppo_trainer.step(generator_input_tokens, response_tensors, rewards) # Charlie: look here, see how ppo_trainer.step is doing
+        # TODO: DEBUG THIS incorrect type
+        stats = ppo_trainer.step(generator_input_tokens, generator_output_tensors, rewards) # Charlie: look here, see how ppo_trainer.step is doing
         ppo_trainer.log_stats(stats, batch, rewards)
   
         #### Save model
@@ -133,7 +143,7 @@ if __name__=="__main__":
     ########### Dataset parameters ##########
     parser.add_argument(
         "--dataset",
-        default="./rl_jailbreak/datasets/ppo_dataset.csv",
+        default="./datasets/ppo_dataset.csv",
         help = "Path to PPO dataset.",
         type = pathlib.Path,
     )
