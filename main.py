@@ -5,7 +5,7 @@ import argparse
 import pathlib
 import pandas as pd
 from datasets import Dataset
-
+import os 
 def main(args):
 
     ppo_config = PPOConfig(
@@ -51,25 +51,28 @@ def main(args):
 
     # TODO: setup W&B logging
 
+
     # TODO update training loop
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
         print(f"Epoch {epoch}")
 
         # TODO: change back to list[Tensor]
-        generator_input_tokens = ppo_trainer.tokenizer(["the"] * ppo_config.batch_size, return_tensors='pt', padding='max_length', return_attention_mask=True, truncation=True, max_length=50).input_ids.to(device)
+        MAX_LENGTH = 50
+        generator_input_tokens = [ppo_trainer.tokenizer("the" , return_tensors='pt', padding='max_length', return_attention_mask=True, truncation=True, max_length=MAX_LENGTH)['input_ids'].to(device).squeeze()] * ppo_config.batch_size
         print(generator_input_tokens)
         # print(ppo_trainer.generate(ppo_trainer.tokenizer.encode("the", return_tensors='pt')[0].to(device)))
         # TODO: change back to list[Tensor]
-        generator_output_tensors = ppo_trainer.model.generate(generator_input_tokens, **generator_kwargs)
+        # ppo_trainer.model.generate(i, **generator_kwargs)
+        generator_output_tensors = [ppo_trainer.model.generate(generator_input_tokens[0].unsqueeze(0), **generator_kwargs).squeeze()[-MAX_LENGTH:] for i in generator_input_tokens]
         
-        batch["attack"] = ppo_trainer.tokenizer.batch_decode(generator_output_tensors)
+        batch["attack"] = [ppo_trainer.tokenizer.batch_decode(i)[0] for i in generator_output_tensors]
         # print(batch["attack"])
         # print(batch["query"])
         target_inputs = [" ".join([attack, query]) for attack, query in zip(batch["attack"], batch["query"])]
         print(target_inputs)
 
         # TODO: convert target into pipeline object?
-        target_outputs = target.generate(target_inputs)
+        target_outputs = [target.generate(i) for i in target_inputs]
         print(target_outputs)
 
         #### Compute reward score
@@ -77,18 +80,29 @@ def main(args):
         # TODO: convert reward into pipeline object? LOW PRIO
         
         # TODO: return list of tensors
-        rewards = reward_model.generate(target_outputs)
+        rewards = [reward_model.generate(i) for i in target_outputs]
         print(rewards)
 
         # TODO: Add diversity metrics here
 
         #### Run PPO step
         # TODO: DEBUG THIS incorrect type
-        stats = ppo_trainer.step(generator_input_tokens, generator_output_tensors, rewards) # Charlie: look here, see how ppo_trainer.step is doing
+        stats = ppo_trainer.step(generator_input_tokens, generator_output_tensors, rewards)
         ppo_trainer.log_stats(stats, batch, rewards)
   
         #### Save model
-        ppo_trainer.save_model(args.save_dir)
+        # FIXME: @Xavier the following three lines.
+        """
+        Traceback (most recent call last):
+        File "/data1/charlieji/rl_jailbreak/main.py", line 170, in <module>
+            main(args)
+        File "/data1/charlieji/rl_jailbreak/main.py", line 94, in main
+            if not os.path.exists(args.save_dir):
+        AttributeError: 'Namespace' object has no attribute 'save_dir'
+        """
+        # if not os.path.exists(args.save_dir):
+        #     os.makedirs(args.save_dir)
+        # ppo_trainer.save_model(args.save_dir)
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
