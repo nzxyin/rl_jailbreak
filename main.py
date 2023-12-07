@@ -7,12 +7,19 @@ import pandas as pd
 from datasets import Dataset
 import os 
 import torch
-def main(args):
+from datetime import datetime
+import wandb
 
+wandb.init() # initialize W&B project
+
+def main(args):
+    if not os.path.exists(args.save_dir):
+        os.makedirs(args.save_dir)
     ppo_config = PPOConfig(
         model_name=args.generator_model,
         learning_rate=args.ppo_lr,
         batch_size=5,
+        log_with="wandb",
     )
 
     generator = load_generator(args.generator_model)
@@ -54,61 +61,64 @@ def main(args):
 
 
     # TODO update training loop
-    for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
-        print(f"Epoch {epoch}")
+    MAX_EPOCH = 100
+    for epoch in tqdm(range(MAX_EPOCH)):
+        for batch_idx, batch in tqdm(enumerate(ppo_trainer.dataloader)):
+            print(f"Epoch {epoch} Batch {batch_idx}")
+            # TODO: change back to list[Tensor]
+            MAX_LENGTH = 50
+            # generator_input_tokens = [ppo_trainer.tokenizer("the" , return_tensors='pt')['input_ids'].to(device).squeeze()] * ppo_config.batch_size
+            generator_input_tokens = [ppo_trainer.tokenizer("the" , return_tensors='pt', padding='max_length', return_attention_mask=True, truncation=True, max_length=MAX_LENGTH)['input_ids'].to(device).squeeze()] * ppo_config.batch_size
+            print(generator_input_tokens)
+            # print(ppo_trainer.generate(ppo_trainer.tokenizer.encode("the", return_tensors='pt')[0].to(device)))
+            # TODO: change back to list[Tensor]
+            generator_output_tensors = [ppo_trainer.model.generate(generator_input_tokens[0].unsqueeze(0), **generator_kwargs).squeeze()[-MAX_LENGTH:] for i in generator_input_tokens]
+            batch["attack"] = [ppo_trainer.tokenizer.batch_decode(i)[0] for i in generator_output_tensors]
+            target_inputs = [" ".join([attack, query]) for attack, query in zip(batch["attack"], batch["query"])]
+            print(target_inputs)
 
-        # TODO: change back to list[Tensor]
-        MAX_LENGTH = 50
-        generator_input_tokens = [ppo_trainer.tokenizer("the" , return_tensors='pt')['input_ids'].to(device).squeeze()] * ppo_config.batch_size
-        print(generator_input_tokens)
-        # print(ppo_trainer.generate(ppo_trainer.tokenizer.encode("the", return_tensors='pt')[0].to(device)))
-        # TODO: change back to list[Tensor]
-        # ppo_trainer.model.generate(i, **generator_kwargs)
-        generator_output_tensors = [ppo_trainer.model.generate(generator_input_tokens[0].unsqueeze(0), **generator_kwargs).squeeze()[-MAX_LENGTH:] for i in generator_input_tokens]
-        
-        batch["attack"] = [ppo_trainer.tokenizer.batch_decode(i)[0] for i in generator_output_tensors]
-        # print(batch["attack"])
-        # print(batch["query"])
-        target_inputs = [" ".join([attack, query]) for attack, query in zip(batch["attack"], batch["query"])]
-        print(target_inputs)
+            # TODO: convert target into pipeline object?
+            # target_outputs = [target.generate(i) for i in target_inputs]
+            target_outputs = target.generate(target_inputs)
+            # print(target_outputs)
 
-        # TODO: convert target into pipeline object?
-        # target_outputs = [target.generate(i) for i in target_inputs]
-        target_outputs = target.generate(target_inputs)
-        print(target_outputs)
+            #### Compute reward score
+            # TODO: check type and shape of output. HIGH PRIO
+            # TODO: convert reward into pipeline object? LOW PRIO
+            
+            # TODO: return list of tensors
+            # rewards = [reward_model.generate(i) for i in target_outputs]
+            rewards = reward_model.generate(target_outputs)
+            # print(rewards)
+            rewards = [torch.tensor([item], device=device) for item in rewards]
+            # TODO: Add diversity metrics here
 
-        #### Compute reward score
-        # TODO: check type and shape of output. HIGH PRIO
-        # TODO: convert reward into pipeline object? LOW PRIO
-        
-        # TODO: return list of tensors
-        # rewards = [reward_model.generate(i) for i in target_outputs]
-        rewards = reward_model.generate(target_outputs)
-        print(rewards)
-        rewards = [torch.tensor([item.detach().numpy()], device=device) for item in rewards]
-        # TODO: Add diversity metrics here
-
-        #### Run PPO step
-        # TODO: DEBUG THIS incorrect type
-        stats = ppo_trainer.step(generator_input_tokens, generator_output_tensors, rewards)
-        ppo_trainer.log_stats(stats, batch, rewards)
-  
-        #### Save model
-        # FIXME: @Xavier the following three lines.
-        """
-        Traceback (most recent call last):
-        File "/data1/charlieji/rl_jailbreak/main.py", line 170, in <module>
-            main(args)
-        File "/data1/charlieji/rl_jailbreak/main.py", line 94, in main
-            if not os.path.exists(args.save_dir):
-        AttributeError: 'Namespace' object has no attribute 'save_dir'
-        """
-        # if not os.path.exists(args.save_dir):
-        #     os.makedirs(args.save_dir)
-        # ppo_trainer.save_model(args.save_dir)
-        # generator.model.push_to_hub("my-fine-tuned-model-ppo")
-        generator.model.save_pretrained("my-fine-tuned-model-ppo") # source: https://huggingface.co/docs/trl/quickstart, only the most recent one got saved. FIXME
-
+            #### Run PPO step
+            # TODO: DEBUG THIS incorrect type
+            stats = ppo_trainer.step(generator_input_tokens, generator_output_tensors, rewards)
+            ppo_trainer.log_stats(stats, batch, rewards)
+    
+            #### Save model
+            # FIXME: @Xavier the following three lines.
+            """
+            Traceback (most recent call last):
+            File "/data1/charlieji/rl_jailbreak/main.py", line 170, in <module>
+                main(args)
+            File "/data1/charlieji/rl_jailbreak/main.py", line 94, in main
+                if not os.path.exists(args.save_dir):
+            AttributeError: 'Namespace' object has no attribute 'save_dir'
+            """
+            # if not os.path.exists(args.save_dir):
+            #     os.makedirs(args.save_dir)
+            # ppo_trainer.save_model(args.save_dir)
+            # generator.model.push_to_hub("my-fine-tuned-model-ppo")
+        if epoch % 5 == 0:
+            # ppo_trainer.save_model(args.save_dir)
+            # get current time
+            pass
+            # ppo_trainer.save_pretrained(f"{args.save_dir}/{args.model_name}{datetime.now().strftime("%Y-%m-%d|%H:%M:%S")}-EPOCH-{epoch}") 
+            # print(f"Model saved at {args.save_dir}/{datetime.now().strftime("%Y-%m-%d|%H:%M:%S")}-EPOCH-{epoch}")
+            
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
@@ -125,6 +135,13 @@ if __name__=="__main__":
         type = int,
         default = 32,
         help = "Maximum number of generated tokens for the attacker."
+    )
+    
+    parser.add_argument(
+        "--model_name",
+        type = str,
+        default = "PPO-baseline",
+        help = "Model Name"
     )
     
     ##################################################
