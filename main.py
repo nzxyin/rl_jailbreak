@@ -185,13 +185,6 @@ if __name__=="__main__":
         type = pathlib.Path,
     )
     
-    parser.add_argument(
-        "--save_dir",
-        default="./results",
-        help = "Path to save the model.",
-        type = pathlib.Path,
-    )
-    
     ##################################################
 
     ########### PPO parameters ##########
@@ -201,8 +194,33 @@ if __name__=="__main__":
         help = "Learning rate for PPO",
         type = float,
     )
+
+    parser.add_argument(
+        "--ppo-num-epochs",
+        default = 100,
+        help = "Number of epochs for PPO",
+        type = int,
+    )
+
+    parser.add_argument(
+        "--ppo-batch-size",
+        default = 64,
+        help = "Batch size for PPO",
+        type = int,
+    )
     
     # TODO: add other PPO params
+    ##################################################
+    
+    ########### Logging parameters ##########
+    
+    parser.add_argument(
+        "--save_dir",
+        default="./results",
+        help = "Path to save the model.",
+        type = pathlib.Path,
+    )
+
     ##################################################
 
     args = parser.parse_args()
