@@ -1,6 +1,6 @@
 from rl_jailbreak.models.model import load_generator, load_target, load_reward
 from trl import SFTTrainer
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, TrainingArguments
 from tqdm import tqdm      
 import argparse  
 import pathlib
@@ -36,16 +36,11 @@ def main(args):
 
     model = AutoModelForCausalLM.from_pretrained(args.generator_model)
 
-    trainer = SFTTrainer(
-        model=model,
-        train_dataset=dataset,
-        dataset_text_field="text", # TODO: header name here
-        peft_config=peft_config, 
-        max_seq_length=args.sft_max_seq_len,
+    training_args = TrainingArguments(
         output_dir=args.save_dir,
-        logging_strategy='epochs',
-        save_strategy='epochs',
-        evaluation_strategy='epochs',
+        logging_strategy='epoch',
+        save_strategy='epoch',
+        evaluation_strategy='epoch',
         save_total_limit=1,
         warmup_ratio=0.1,
         per_device_train_batch_size=args.sft_batch_size,
@@ -53,6 +48,17 @@ def main(args):
         load_best_model_at_end=True,
         num_train_epochs=args.sft_num_epochs,
     )
+
+    trainer = SFTTrainer(
+        args=training_args,
+        model=model,
+        train_dataset=dataset,
+        dataset_text_field="text", # TODO: header name here
+        peft_config=peft_config, 
+        max_seq_length=args.sft_max_seq_len,
+    )
+
+    
 
     trainer.train()
 
