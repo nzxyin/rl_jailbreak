@@ -39,11 +39,11 @@ class TargetModel(Model):
         self.device = self.model.device
 
     def generate(self, input: list[str]):
-        input_tensor = self.tokenizer.encode(input, return_tensors="pt")
+        # input_tensor = self.tokenizer.encode(input, return_tensors="pt")
         # input_tensor = [self.tokenizer.encode(i, return_tensors="pt") for i in input]
-        # input_tensor = self.tokenizer(input, return_tensors="pt", padding='max_length', return_attention_mask=True, truncation=True, max_length=50).input_ids.to(self.device)
+        input_tensor = self.tokenizer(input, return_tensors="pt", padding='max_length', return_attention_mask=True, truncation=True, max_length=50).input_ids.to(self.device)
         outputs = self.model.generate(input_tensor)
-        return self.tokenizer.batch_decode(outputs)[0]
+        return self.tokenizer.batch_decode(outputs)
     
 class RewardModel(Model):
     def __init__(self, model, tokenizer) -> None:
@@ -60,14 +60,8 @@ class RewardModel(Model):
         # self.reward_config = None
 
     def generate(self, input):
-        tokens = self.tokenizer.encode(input, 
-                    truncation=True,
-                    max_length=512,
-                    return_token_type_ids=False,
-                    return_tensors='pt', 
-                    return_attention_mask=True)
-        # tokens = self.tokenizer(input, return_tensors='pt', return_attention_mask=True, padding='max_length', truncation=True, max_length=50).input_ids.to(self.device)
-        return self.model(tokens).loss['logits'][0][0]
+        tokens = self.tokenizer(input, return_tensors="pt", padding='max_length', return_attention_mask=True, truncation=True, max_length=50).input_ids.to(self.device)
+        return self.model(tokens).logits.squeeze()
 
     # def train(self, dataset):
     #     trainer = RewardTrainer(

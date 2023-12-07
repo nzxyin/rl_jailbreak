@@ -6,6 +6,7 @@ import pathlib
 import pandas as pd
 from datasets import Dataset
 import os 
+import torch
 
 def main(args):
 
@@ -66,7 +67,9 @@ def main(args):
 
         # TODO: change back to list[Tensor]
         MAX_LENGTH = 50
+
         generator_input_tokens = [ppo_trainer.tokenizer("the", return_tensors='pt', padding='max_length', truncation=True, max_length=MAX_LENGTH).input_ids.to(device).squeeze()] * ppo_config.batch_size
+
         print(generator_input_tokens)
         # print(ppo_trainer.generate(ppo_trainer.tokenizer.encode("the", return_tensors='pt')[0].to(device)))
         # TODO: change back to list[Tensor]
@@ -80,7 +83,8 @@ def main(args):
         print(target_inputs)
 
         # TODO: convert target into pipeline object?
-        target_outputs = [target.generate(i) for i in target_inputs]
+        # target_outputs = [target.generate(i) for i in target_inputs]
+        target_outputs = target.generate(target_inputs)
         print(target_outputs)
 
         #### Compute reward score
@@ -88,9 +92,10 @@ def main(args):
         # TODO: convert reward into pipeline object? LOW PRIO
         
         # TODO: return list of tensors
-        rewards = [reward_model.generate(i) for i in target_outputs]
+        # rewards = [reward_model.generate(i) for i in target_outputs]
+        rewards = reward_model.generate(target_outputs)
         print(rewards)
-
+        rewards = [torch.tensor([item.detach().numpy()], device=device) for item in rewards]
         # TODO: Add diversity metrics here
 
         #### Run PPO step
