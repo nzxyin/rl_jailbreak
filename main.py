@@ -65,28 +65,24 @@ def main(args):
     )
     device = ppo_trainer.accelerator.device
 
-    # TODO: setup W&B logging
-
-
     # TODO update training loop
-    MAX_EPOCH = 100
+
     GLOBAL_ITER = 0
-    LOG_EVERY = 10
-    for epoch in tqdm(range(MAX_EPOCH)):
+    # LOG_EVERY = 10
+    for epoch in tqdm(range(args.max_epoch)):
         for batch_idx, batch in tqdm(enumerate(ppo_trainer.dataloader)):
             
             print(f"Epoch {epoch} Batch {batch_idx}")
             # TODO: change back to list[Tensor]
-            MAX_LENGTH = 50
-            # generator_input_tokens = [ppo_trainer.tokenizer("the" , return_tensors='pt')['input_ids'].to(device).squeeze()] * ppo_config.batch_size
+            MAX_LENGTH = 100
             generator_input_tokens = [ppo_trainer.tokenizer("the" , return_tensors='pt', padding='max_length', return_attention_mask=True, truncation=True, max_length=MAX_LENGTH)['input_ids'].to(device).squeeze()] * ppo_config.batch_size
             # print(generator_input_tokens)
             # print(ppo_trainer.generate(ppo_trainer.tokenizer.encode("the", return_tensors='pt')[0].to(device)))
             # TODO: change back to list[Tensor]
-            generator_output_tensors = [ppo_trainer.model.generate(generator_input_tokens[0].unsqueeze(0), **generator_kwargs).squeeze()[-MAX_LENGTH:] for i in generator_input_tokens]
+            generator_output_tensors = [ppo_trainer.model.generate(i.unsqueeze(0), **generator_kwargs).squeeze()[-MAX_LENGTH:] for i in generator_input_tokens]
             batch["attack"] = [ppo_trainer.tokenizer.batch_decode(i)[0] for i in generator_output_tensors]
             target_inputs = [" ".join([attack, query]) for attack, query in zip(batch["attack"], batch["query"])]
-            if GLOBAL_ITER % LOG_EVERY == 0:
+            if GLOBAL_ITER % args.log_freq == 0:
                 for i, (attack, query) in enumerate(zip(batch["attack"], batch["query"])):
                     writer.add_text(f"target_input/target_input_attack[{i}]", attack, GLOBAL_ITER)
                     writer.add_text(f"target_input/target_input_query[{i}]", query, GLOBAL_ITER)
@@ -96,7 +92,7 @@ def main(args):
             # TODO: convert target into pipeline object?
             # target_outputs = [target.generate(i) for i in target_inputs]
             target_outputs = target.generate(target_inputs)
-            if GLOBAL_ITER % LOG_EVERY == 0:
+            if GLOBAL_ITER % args.log_freq == 0:
                 for i, val in enumerate(target_outputs):
                     writer.add_text(f"target_outputs/target_outputs[{i}]", val, GLOBAL_ITER)
                     # writer.flush()
@@ -109,7 +105,7 @@ def main(args):
             # TODO: return list of tensors
             # rewards = [reward_model.generate(i) for i in target_outputs]
             rewards = reward_model.generate(target_outputs)
-            if GLOBAL_ITER % LOG_EVERY == 0:
+            if GLOBAL_ITER % args.log_freq == 0:
                 writer.add_histogram("reward/rewards", rewards, GLOBAL_ITER)
                 for i, val in enumerate(rewards):
                     writer.add_scalar(f"reward/rewards[{i}]", val, GLOBAL_ITER)
@@ -159,7 +155,7 @@ if __name__=="__main__":
     parser.add_argument(
         "--generator-max-tokens",
         type = int,
-        default = 512,
+        default = 150,
         help = "Maximum number of generated tokens for the attacker."
     )
     
@@ -188,7 +184,7 @@ if __name__=="__main__":
     ##################################################
 
     # TODO: Add reward parameters
-    ########### Target model parameters ##########
+    ########### Reward model parameters ##########
     parser.add_argument(
         "--reward-model",
         default = "nicholasKluge/ToxicityModel",
@@ -198,7 +194,7 @@ if __name__=="__main__":
     parser.add_argument(
         "--reward-max-tokens",
         type = int,
-        default = 512,
+        default = 150,
         help = "Maximum number of input tokens for the reward."
     )
     ##################################################
@@ -246,9 +242,26 @@ if __name__=="__main__":
         help = "Path to save the model.",
         type = pathlib.Path,
     )
+    
+    parser.add_argument(
+        "--log-freq",
+        default=10,
+        help = "Logging frequency.",
+        type = int,
+    )
+    
 
     ##################################################
 
+    ########### Training parameters ##########
+    
+    parser.add_argument(
+        "--max-epoch",
+        default=100,
+        help = "Maximum number of epochs.",
+        type = int,
+    )
+    
     args = parser.parse_args()
     main(args)
     
