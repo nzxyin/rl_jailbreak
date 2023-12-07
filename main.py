@@ -9,9 +9,8 @@ import os
 import torch
 from datetime import datetime
 # import wandb
-import tensorboard
+from torch.utils.tensorboard import SummaryWriter
 
-# writer = tensorboard.SummaryWriter("runs/ppo_experiment")
 
 # wandb.init() # initialize W&B project
 
@@ -30,7 +29,7 @@ def main(args):
         },
         
     )
-
+    writer = SummaryWriter(f"./logs/{run_name}")
     generator = load_generator(args.generator_model)
     target = load_target(args.target_model)
     reward_model = load_reward(args.reward_model)
@@ -71,8 +70,11 @@ def main(args):
 
     # TODO update training loop
     MAX_EPOCH = 100
+    GLOBAL_ITER = 0
+    LOG_EVERY = 10
     for epoch in tqdm(range(MAX_EPOCH)):
         for batch_idx, batch in tqdm(enumerate(ppo_trainer.dataloader)):
+            
             print(f"Epoch {epoch} Batch {batch_idx}")
             # TODO: change back to list[Tensor]
             MAX_LENGTH = 50
@@ -84,11 +86,20 @@ def main(args):
             generator_output_tensors = [ppo_trainer.model.generate(generator_input_tokens[0].unsqueeze(0), **generator_kwargs).squeeze()[-MAX_LENGTH:] for i in generator_input_tokens]
             batch["attack"] = [ppo_trainer.tokenizer.batch_decode(i)[0] for i in generator_output_tensors]
             target_inputs = [" ".join([attack, query]) for attack, query in zip(batch["attack"], batch["query"])]
+            if GLOBAL_ITER % LOG_EVERY == 0:
+                for i, (attack, query) in enumerate(zip(batch["attack"], batch["query"])):
+                    writer.add_text(f"target_input/target_input_attack[{i}]", attack, GLOBAL_ITER)
+                    writer.add_text(f"target_input/target_input_query[{i}]", query, GLOBAL_ITER)
+                    # writer.flush()
             # print(target_inputs)
 
             # TODO: convert target into pipeline object?
             # target_outputs = [target.generate(i) for i in target_inputs]
             target_outputs = target.generate(target_inputs)
+            if GLOBAL_ITER % LOG_EVERY == 0:
+                for i, val in enumerate(target_outputs):
+                    writer.add_text(f"target_outputs/target_outputs[{i}]", val, GLOBAL_ITER)
+                    # writer.flush()
             # print(target_outputs)
 
             #### Compute reward score
@@ -98,6 +109,11 @@ def main(args):
             # TODO: return list of tensors
             # rewards = [reward_model.generate(i) for i in target_outputs]
             rewards = reward_model.generate(target_outputs)
+            if GLOBAL_ITER % LOG_EVERY == 0:
+                writer.add_histogram("reward/rewards", rewards, GLOBAL_ITER)
+                for i, val in enumerate(rewards):
+                    writer.add_scalar(f"reward/rewards[{i}]", val, GLOBAL_ITER)
+                # writer.flush()
             # print(rewards)
             rewards = [torch.tensor([item], device=device) for item in rewards]
             # TODO: Add diversity metrics here
@@ -121,6 +137,7 @@ def main(args):
             #     os.makedirs(args.save_dir)
             # ppo_trainer.save_model(args.save_dir)
             # generator.model.push_to_hub("my-fine-tuned-model-ppo")
+            GLOBAL_ITER += 1
         if epoch % 5 == 0:
             # ppo_trainer.save_model(args.save_dir)
             # get current time
@@ -142,7 +159,7 @@ if __name__=="__main__":
     parser.add_argument(
         "--generator-max-tokens",
         type = int,
-        default = 32,
+        default = 512,
         help = "Maximum number of generated tokens for the attacker."
     )
     
