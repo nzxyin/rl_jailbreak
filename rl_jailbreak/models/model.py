@@ -4,7 +4,7 @@ from trl import RewardTrainer, RewardConfig, AutoModelForCausalLMWithValueHead
 from typing import Union, Tuple
 
 def load_generator(generator_name):
-    tokenizer = AutoTokenizer.from_pretrained(generator_name)
+    tokenizer = AutoTokenizer.from_pretrained(generator_name, padding_side='left')
     model = AutoModelForCausalLMWithValueHead.from_pretrained(generator_name, device_map="auto")
     return GeneratorModel(model, tokenizer,)
 
