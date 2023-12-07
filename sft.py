@@ -1,11 +1,14 @@
 from rl_jailbreak.models.model import load_generator, load_target, load_reward
-from trl import PPOTrainer, PPOConfig
+from trl import SFTTrainer
+from transformers import AutoModelForCausalLM
 from tqdm import tqdm      
 import argparse  
 import pathlib
 import pandas as pd
 from datasets import Dataset
 import os 
+from peft import LoraConfig
+
 
 def main(args):
 
@@ -13,15 +16,7 @@ def main(args):
     if not os.path.exists(args.save_dir):
         os.mkdir(args.save_dir)
 
-    ppo_config = PPOConfig(
-        model_name=args.generator_model,
-        learning_rate=args.ppo_lr,
-        batch_size=args.ppo_batch_size,
-    )
-
-    generator = load_generator(args.generator_model)
-    target = load_target(args.target_model)
-    reward_model = load_reward(args.reward_model)
+    
 
     df = pd.read_csv(args.dataset)    
     # rename the column "question" to "query"
@@ -33,14 +28,23 @@ def main(args):
     dataset = Dataset.from_pandas(df)
     # TODO encode dataset using target model and slice <BOS> token off
 
-    generator_kwargs = {
-        "min_length": -1, # don't ignore the EOS token (see above)
-        "top_k": 0.0, # no top-k sampling
-        "top_p": 1.0, # no nucleus sampling
-        "do_sample": True, # yes, we want to sample
-        "pad_token_id": generator.tokenizer.eos_token_id, # most decoder models don't have a padding token - use EOS token instead
-        "max_new_tokens": args.generator_max_tokens, # specify how many tokens you want to generate at most
-    }
+    peft_config = LoraConfig(
+        r=16,
+        lora_alpha=32,
+        lora_dropout=0.05,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+
+    model = AutoModelForCausalLM.from_pretrained(args.generator_model)
+
+    trainer = SFTTrainer(
+        model=model,
+        train_dataset=dataset,
+        dataset_text_field="text", # TODO: header name here
+        peft_config=peft_config, 
+        max_seq_length=512,
+    )
 
     target_kwargs = {
 
@@ -65,7 +69,7 @@ def main(args):
         print(f"Epoch {epoch}")
 
         # TODO: change back to list[Tensor]
-        MAX_LENGTH = 50
+        MAX_LENGTH = args.ppo_
         generator_input_tokens = [ppo_trainer.tokenizer("the", return_tensors='pt', padding='max_length', truncation=True, max_length=MAX_LENGTH).input_ids.to(device).squeeze()] * ppo_config.batch_size
         print(generator_input_tokens)
         # print(ppo_trainer.generate(ppo_trainer.tokenizer.encode("the", return_tensors='pt')[0].to(device)))
@@ -133,42 +137,11 @@ if __name__=="__main__":
     
     ##################################################
 
-    ########### Target model parameters ##########
-    parser.add_argument(
-        "--target-model",
-        default = "gpt2-medium",
-        help = "Name of target model.",
-        choices=["gpt2-medium"]
-    )
-    parser.add_argument(
-        "--target-max-tokens",
-        type = int,
-        default = 150,
-        help = "Maximum number of generated tokens for the target."
-    )
-    ##################################################
-
-    # TODO: Add reward parameters
-    ########### Target model parameters ##########
-    parser.add_argument(
-        "--reward-model",
-        default = "nicholasKluge/ToxicityModel",
-        help = "Name of reward model.",
-        choices=["nicholasKluge/ToxicityModel"]
-    )
-    parser.add_argument(
-        "--reward-max-tokens",
-        type = int,
-        default = 512,
-        help = "Maximum number of input tokens for the reward."
-    )
-    ##################################################
-
     ########### Dataset parameters ##########
     parser.add_argument(
         "--dataset",
-        default="./datasets/ppo_dataset.csv",
-        help = "Path to PPO dataset.",
+        default="./datasets/sft_dataset.csv",
+        help = "Path to SFT dataset.",
         type = pathlib.Path,
     )
     
