@@ -9,12 +9,12 @@ def load_generator(generator_name):
     return GeneratorModel(model, tokenizer,)
 
 def load_target(target_name):
-    tokenizer = AutoTokenizer.from_pretrained(target_name)
+    tokenizer = AutoTokenizer.from_pretrained(target_name, padding_side='right')
     model = AutoModelForCausalLM.from_pretrained(target_name, device_map="auto")
     return TargetModel(model, tokenizer)
 
 def load_reward(reward_name):
-    tokenizer = AutoTokenizer.from_pretrained(reward_name)
+    tokenizer = AutoTokenizer.from_pretrained(reward_name, padding_side='left')
     model = AutoModelForSequenceClassification.from_pretrained(reward_name, device_map="auto")
     return RewardModel(model, tokenizer)
 
@@ -28,6 +28,7 @@ class Model(object):
         raise NotImplementedError()
     
 class GeneratorModel(Model):
+    
     def generate(self, input):
         input_tensor = self.tokenizer(input, return_tensors="pt")
         return self.model.generate(input_tensor)
@@ -41,9 +42,26 @@ class TargetModel(Model):
     def generate(self, input: list[str]):
         # input_tensor = self.tokenizer.encode(input, return_tensors="pt")
         # input_tensor = [self.tokenizer.encode(i, return_tensors="pt") for i in input]
-        input_tensor = self.tokenizer(input, return_tensors="pt", padding='max_length', return_attention_mask=True, truncation=True, max_length=50).input_ids.to(self.device)
-        outputs = self.model.generate(input_tensor)
-        return self.tokenizer.batch_decode(outputs)
+        # input_tensor = self.tokenizer(input, 
+        #                             return_tensors="pt", max_length=256).input_ids.to(self.device)
+        # outputs = self.model.generate(input_tensor)
+        # return self.tokenizer.batch_decode(outputs)
+        
+        input_tensor = self.tokenizer(input, 
+                                    return_tensors="pt", 
+                                    padding='max_length', 
+                                    return_attention_mask=True, 
+                                    truncation=True, 
+                                    max_length=256).input_ids.to(self.device)
+        outputs = self.model.generate(input_tensor, 
+                                    min_length=100, 
+                                    top_k= 0.0, 
+                                    top_p= 1.0, 
+                                    do_sample= True, 
+                                    pad_token_id= self.tokenizer.eos_token_id, 
+                                    max_new_tokens= 150,)
+        print(input_tensor.shape[1])
+        return self.tokenizer.batch_decode(outputs[:, input_tensor.shape[1]:])
     
 class RewardModel(Model):
     def __init__(self, model, tokenizer) -> None:
@@ -60,8 +78,12 @@ class RewardModel(Model):
         # self.reward_config = None
 
     def generate(self, input):
-        tokens = self.tokenizer(input, return_tensors="pt", padding='max_length', return_attention_mask=True, truncation=True, max_length=50).input_ids.to(self.device)
-        return self.model(tokens).logits.squeeze()
+        tokens = self.tokenizer(input, return_tensors="pt", 
+                                padding='max_length', 
+                                return_attention_mask=True, 
+                                truncation=True, 
+                                max_length=512).input_ids.to(self.device)
+        return -self.model(tokens).logits.squeeze() # original model predicts positive is good, negative is bad. We want more toxic to be positive, so negate. 
 
     # def train(self, dataset):
     #     trainer = RewardTrainer(
