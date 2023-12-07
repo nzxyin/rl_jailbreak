@@ -61,7 +61,7 @@ class RewardModel(Model):
 
     def generate(self, input):
         tokens = self.tokenizer(input, return_tensors="pt", padding='max_length', return_attention_mask=True, truncation=True, max_length=50).input_ids.to(self.device)
-        return self.model(tokens).logits.squeeze()
+        return -self.model(tokens).logits.squeeze() # original model predicts positive is good, negative is bad. We want more toxic to be positive, so negate. 
 
     # def train(self, dataset):
     #     trainer = RewardTrainer(
