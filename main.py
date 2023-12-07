@@ -45,7 +45,7 @@ def main(args):
     # TODO encode dataset using target model and slice <BOS> token off
 
     generator_kwargs = {
-        "min_length": -1, # don't ignore the EOS token (see above)
+        "min_length": 100, # don't ignore the EOS token (see above)
         "top_k": 0.0, # no top-k sampling
         "top_p": 1.0, # no nucleus sampling
         "do_sample": True, # yes, we want to sample
@@ -74,13 +74,16 @@ def main(args):
             
             print(f"Epoch {epoch} Batch {batch_idx}")
             # TODO: change back to list[Tensor]
-            MAX_LENGTH = 100
-            generator_input_tokens = [ppo_trainer.tokenizer("the" , return_tensors='pt', padding='max_length', return_attention_mask=True, truncation=True, max_length=MAX_LENGTH)['input_ids'].to(device).squeeze()] * ppo_config.batch_size
+            
+            generator_input_tokens = [ppo_trainer.tokenizer("Assign a role for a language model to perform the task: ", return_tensors='pt')['input_ids'].to(device).squeeze()] * ppo_config.batch_size
             # print(generator_input_tokens)
             # print(ppo_trainer.generate(ppo_trainer.tokenizer.encode("the", return_tensors='pt')[0].to(device)))
             # TODO: change back to list[Tensor]
-            generator_output_tensors = [ppo_trainer.model.generate(i.unsqueeze(0), **generator_kwargs).squeeze()[-MAX_LENGTH:] for i in generator_input_tokens]
-            batch["attack"] = [ppo_trainer.tokenizer.batch_decode(i)[0] for i in generator_output_tensors]
+            # print(ppo_trainer.model)
+            generator_output_tensors = [ppo_trainer.model.generate(i.unsqueeze(0), **generator_kwargs).squeeze()[-args.max_length:] for i in generator_input_tokens]
+            # batch["attack"] = [ppo_trainer.tokenizer.batch_decode(i)[0] for i in generator_output_tensors]
+            # print("Here is the full", ppo_trainer.tokenizer.batch_decode(generator_output_tensors[0]))
+            batch["attack"] = ["".join(ppo_trainer.tokenizer.batch_decode(i)) for i in generator_output_tensors]
             target_inputs = [" ".join([attack, query]) for attack, query in zip(batch["attack"], batch["query"])]
             if GLOBAL_ITER % args.log_freq == 0:
                 for i, (attack, query) in enumerate(zip(batch["attack"], batch["query"])):
@@ -92,19 +95,42 @@ def main(args):
             # TODO: convert target into pipeline object?
             # target_outputs = [target.generate(i) for i in target_inputs]
             target_outputs = target.generate(target_inputs)
+            # target_outputs = [target.generate(i) for i in target_inputs]
+            # print("TARGET_OUTPUTS", target_outputs)
             if GLOBAL_ITER % args.log_freq == 0:
                 for i, val in enumerate(target_outputs):
                     writer.add_text(f"target_outputs/target_outputs[{i}]", val, GLOBAL_ITER)
                     # writer.flush()
-            # print(target_outputs)
+            
+           
+            
 
             #### Compute reward score
             # TODO: check type and shape of output. HIGH PRIO
             # TODO: convert reward into pipeline object? LOW PRIO
             
             # TODO: return list of tensors
-            # rewards = [reward_model.generate(i) for i in target_outputs]
             rewards = reward_model.generate(target_outputs)
+            # rewards = [reward_model.generate(i) for i in target_outputs]
+            print("11111SAMPLE Target Input", 
+                                        target_inputs[0], 
+                                        "\n\n 11111SAMPLE ATTACK", 
+                                        batch["attack"][0], 
+                                        "\n\n 11111SAMPLE QUERY", 
+                                        batch["query"][0], 
+                                        "\n\n 11111TARGET_OUTPUT", 
+                                        target_outputs[0])
+            print("REWARDS_0", rewards[0])
+            print("22222SAMPLE Target Input",
+                                        target_inputs[1], 
+                                        "\n\n 22222SAMPLE ATTACK", 
+                                        batch["attack"][1], 
+                                        "\n\n 22222SAMPLE QUERY", 
+                                        batch["query"][1], 
+                                        "\n\n 22222TARGET_OUTPUT", 
+                                        target_outputs[1])
+            
+            print("REWARDS_0", rewards[1])
             if GLOBAL_ITER % args.log_freq == 0:
                 writer.add_histogram("reward/rewards", rewards, GLOBAL_ITER)
                 for i, val in enumerate(rewards):
@@ -119,21 +145,12 @@ def main(args):
             stats = ppo_trainer.step(generator_input_tokens, generator_output_tensors, rewards)
             ppo_trainer.log_stats(stats, batch, rewards)
     
-            #### Save model
-            # FIXME: @Xavier the following three lines.
-            """
-            Traceback (most recent call last):
-            File "/data1/charlieji/rl_jailbreak/main.py", line 170, in <module>
-                main(args)
-            File "/data1/charlieji/rl_jailbreak/main.py", line 94, in main
-                if not os.path.exists(args.save_dir):
-            AttributeError: 'Namespace' object has no attribute 'save_dir'
-            """
             # if not os.path.exists(args.save_dir):
             #     os.makedirs(args.save_dir)
             # ppo_trainer.save_model(args.save_dir)
             # generator.model.push_to_hub("my-fine-tuned-model-ppo")
             GLOBAL_ITER += 1
+        writer.flush()
         if epoch % 5 == 0:
             # ppo_trainer.save_model(args.save_dir)
             # get current time
@@ -148,9 +165,9 @@ if __name__=="__main__":
     ########### Generator model parameters ##########
     parser.add_argument(
         "--generator-model", 
-        default = "gpt2-medium",
+        default = "gpt2-medium", # default = "gpt2-medium",
         help = "Name of attack generator model.",
-        choices=["gpt2-medium"]
+        choices=["gpt2-medium", "lvwerra/gpt2-imdb", "/data/public_models/zephyr/zephyr-7b-beta"]
     )
     parser.add_argument(
         "--generator-max-tokens",
@@ -166,14 +183,20 @@ if __name__=="__main__":
         help = "Model Name"
     )
     
+    parser.add_argument(
+        "--max_length",
+        type = int,
+        default = 150,
+        help = "Maximum length of generated text tokens"
+    )
     ##################################################
 
     ########### Target model parameters ##########
     parser.add_argument(
         "--target-model",
-        default = "gpt2-medium",
+        default = "/data/public_models/zephyr/zephyr-7b-beta", # HuggingFaceH4/zephyr-7b-beta
         help = "Name of target model.",
-        choices=["gpt2-medium"]
+        choices=["gpt2-medium", "lvwerra/gpt2-imdb", "/data/public_models/zephyr/zephyr-7b-beta"]
     )
     parser.add_argument(
         "--target-max-tokens",
