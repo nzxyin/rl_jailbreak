@@ -8,18 +8,27 @@ from datasets import Dataset
 import os 
 import torch
 from datetime import datetime
-import wandb
+# import wandb
+import tensorboard
 
-wandb.init() # initialize W&B project
+# writer = tensorboard.SummaryWriter("runs/ppo_experiment")
+
+# wandb.init() # initialize W&B project
 
 def main(args):
-    if not os.path.exists(args.save_dir):
-        os.makedirs(args.save_dir)
+    # if not os.path.exists(args.save_dir):
+    #     os.makedirs(args.save_dir)
+    run_name = f"{args.model_name}-{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}"
     ppo_config = PPOConfig(
         model_name=args.generator_model,
         learning_rate=args.ppo_lr,
-        batch_size=5,
-        log_with="wandb",
+        batch_size=20,
+        log_with="tensorboard",
+        
+        project_kwargs={
+            "logging_dir":f"./logs/{run_name}",
+        },
+        
     )
 
     generator = load_generator(args.generator_model)
@@ -69,13 +78,13 @@ def main(args):
             MAX_LENGTH = 50
             # generator_input_tokens = [ppo_trainer.tokenizer("the" , return_tensors='pt')['input_ids'].to(device).squeeze()] * ppo_config.batch_size
             generator_input_tokens = [ppo_trainer.tokenizer("the" , return_tensors='pt', padding='max_length', return_attention_mask=True, truncation=True, max_length=MAX_LENGTH)['input_ids'].to(device).squeeze()] * ppo_config.batch_size
-            print(generator_input_tokens)
+            # print(generator_input_tokens)
             # print(ppo_trainer.generate(ppo_trainer.tokenizer.encode("the", return_tensors='pt')[0].to(device)))
             # TODO: change back to list[Tensor]
             generator_output_tensors = [ppo_trainer.model.generate(generator_input_tokens[0].unsqueeze(0), **generator_kwargs).squeeze()[-MAX_LENGTH:] for i in generator_input_tokens]
             batch["attack"] = [ppo_trainer.tokenizer.batch_decode(i)[0] for i in generator_output_tensors]
             target_inputs = [" ".join([attack, query]) for attack, query in zip(batch["attack"], batch["query"])]
-            print(target_inputs)
+            # print(target_inputs)
 
             # TODO: convert target into pipeline object?
             # target_outputs = [target.generate(i) for i in target_inputs]
