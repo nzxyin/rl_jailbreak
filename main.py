@@ -15,6 +15,7 @@ wandb.init() # initialize W&B project
 def main(args):
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
+
     ppo_config = PPOConfig(
         model_name=args.generator_model,
         learning_rate=args.ppo_lr,
