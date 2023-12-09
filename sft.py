@@ -8,13 +8,16 @@ import pandas as pd
 from datasets import Dataset
 import os 
 from peft import LoraConfig
+from datetime import datetime
 
 
 def main(args):
 
     # Handle Logging
-    if not os.path.exists(args.save_dir):
-        os.mkdir(args.save_dir)
+    run_name = f"{args.generator_model}-{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}"
+    save_dir = "/".join([str(args.save_dir), run_name])
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
 
     df = pd.read_csv(args.dataset)    
     # rename the column "prompt" to "text"
@@ -37,7 +40,7 @@ def main(args):
     model = AutoModelForCausalLM.from_pretrained(args.generator_model)
 
     training_args = TrainingArguments(
-        output_dir=args.save_dir,
+        output_dir=run_name,
         logging_strategy='epoch',
         save_strategy='epoch',
         evaluation_strategy='epoch',
@@ -69,7 +72,7 @@ if __name__=="__main__":
         "--generator-model", 
         default = "gpt2-medium",
         help = "Name of attack generator model.",
-        choices=["gpt2-medium"]
+        choices=["gpt2-medium", "gpt2-large", "gpt2-xl"]
     )
     
     ##################################################
@@ -131,7 +134,7 @@ if __name__=="__main__":
 
     parser.add_argument(
         "--sft-num_epochs",
-        default=100.,
+        default=200.,
         help = "Num epochs for SFT",
         type = float,
     )
