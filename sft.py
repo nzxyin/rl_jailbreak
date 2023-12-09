@@ -24,7 +24,7 @@ def main(args):
     df = df.drop(columns=["platform", "source", "jailbreak", "created_at", "date", "community_id", "community_name"])
 
     dataset = Dataset.from_pandas(df)
-    # TODO encode dataset using target model and slice <BOS> token off
+    dataset = dataset.train_test_split(args.sft_eval_size)
 
     peft_config = LoraConfig(
         r=args.lora_r,
@@ -52,13 +52,12 @@ def main(args):
     trainer = SFTTrainer(
         args=training_args,
         model=model,
-        train_dataset=dataset,
+        train_dataset=dataset["train"],
+        eval_dataset=dataset["test"],
         dataset_text_field="text", # TODO: header name here
         peft_config=peft_config, 
         max_seq_length=args.sft_max_seq_len,
     )
-
-    
 
     trainer.train()
 
@@ -125,30 +124,37 @@ if __name__=="__main__":
     
     parser.add_argument(
         "--sft-max-seq-len",
-        default=512,
+        default=256,
         help = "Maximum sequence length for SFT",
         type = int,
     )
 
     parser.add_argument(
         "--sft-num_epochs",
-        default=10.,
+        default=100.,
         help = "Num epochs for SFT",
         type = float,
     )
 
     parser.add_argument(
         "--sft-lr",
-        default=5e-5,
+        default=5e-4,
         help = "Learning Rate for SFT",
         type = float,
     )
 
     parser.add_argument(
         "--sft-batch-size",
-        default=16,
+        default=8,
         help = "Batch Size for SFT",
         type = int,
+    )
+
+    parser.add_argument(
+        "--sft-eval-size",
+        default=0.1,
+        help = "Eval Dataset Size for SFT",
+        type = float,
     )
 
     ##################################################
