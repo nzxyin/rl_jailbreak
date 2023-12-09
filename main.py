@@ -100,7 +100,10 @@ def main(args):
             
             print("GENERATOR INPUT TOKENS", generator_input_tokens[0], generator_input_tokens[0].shape)
             
-            generator_output_tensors = [ppo_trainer.model.generate(input_ids=i.unsqueeze(0), **generator_kwargs).squeeze() for i in generator_input_tokens]
+            if args.broadcast:
+                generator_output_tensors = [ppo_trainer.model.generate(input_ids=generator_input_tokens[0].unsqueeze(0), **generator_kwargs).squeeze()] * ppo_config.batch_size
+            else:
+                generator_output_tensors = [ppo_trainer.model.generate(input_ids=i.unsqueeze(0), **generator_kwargs).squeeze() for i in generator_input_tokens]
             
             batch["attack"] = ["".join(ppo_trainer.tokenizer.batch_decode(i)) for i in generator_output_tensors]
             target_inputs = [" ".join([attack, query]) for attack, query in zip(batch["attack"], batch["query"])]
@@ -142,13 +145,20 @@ def main(args):
                 for i, val in enumerate(rewards):
                     if i < 3:
                         writer.add_scalar(f"reward/rewards[{i}]", val, GLOBAL_ITER)
-                    
-            rewards = [torch.tensor([item], device=device) for item in rewards]
+            
+            
             # TODO: Add diversity metrics here
 
             #### Run PPO step
-            
-            stats = ppo_trainer.step(generator_input_tokens, generator_output_tensors, rewards)
+            if args.broadcast:
+                rewards = torch.tensor(rewards, device=device)
+                print("ALL REWARDS", rewards)
+                print("MAX REWARD", torch.max(rewards))
+                rewards = [torch.max(rewards)]
+                stats = ppo_trainer.step([generator_input_tokens[0]], [generator_output_tensors[0]], rewards) # only one sample update, since all are repeated
+            else:
+                rewards = [torch.tensor([item], device=device) for item in rewards]
+                stats = ppo_trainer.step(generator_input_tokens, generator_output_tensors, rewards)
             ppo_trainer.log_stats(stats, batch, rewards)
     
             # if not os.path.exists(args.save_dir):
@@ -211,7 +221,9 @@ if __name__=="__main__":
         choices=["gpt2-medium", 
                  "lvwerra/gpt2-imdb", 
                  "/data/public_models/zephyr/zephyr-7b-beta", 
-                 "/data/public_models/llama_v2_chat/Llama-2-7b-chat-hf"]
+                 "/data/public_models/llama_v2_chat/Llama-2-7b-chat-hf",
+                 "/data/public_models/vicuna/vicuna-7b-v1.3",
+                 "/data/public_models/yi/Yi-34B"]
     )
     parser.add_argument(
         "--target-max-tokens",
@@ -333,6 +345,12 @@ if __name__=="__main__":
     )
 
     ##################################################
+    
+    parser.add_argument(
+        "-b",
+        "--broadcast",
+        action="store_true",
+    )
     
     args = parser.parse_args()
     main(args)
