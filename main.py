@@ -149,14 +149,16 @@ def main(args):
             #     os.makedirs(args.save_dir)
             # ppo_trainer.save_model(args.save_dir)
             # generator.model.push_to_hub("my-fine-tuned-model-ppo")
+            if GLOBAL_ITER % args.save_iter == 0:
+                # ppo_trainer.save_model(args.save_dir)
+                # get current time
+                pass
+                # ppo_trainer.save_pretrained(f"{args.save_dir}/{args.model_name}{datetime.now().strftime("%Y-%m-%d|%H:%M:%S")}-EPOCH-{epoch}") 
+                # print(f"Model saved at {args.save_dir}/{datetime.now().strftime("%Y-%m-%d|%H:%M:%S")}-EPOCH-{epoch}")
+            
             GLOBAL_ITER += 1
+            
         writer.flush()
-        if epoch % 5 == 0:
-            # ppo_trainer.save_model(args.save_dir)
-            # get current time
-            pass
-            # ppo_trainer.save_pretrained(f"{args.save_dir}/{args.model_name}{datetime.now().strftime("%Y-%m-%d|%H:%M:%S")}-EPOCH-{epoch}") 
-            # print(f"Model saved at {args.save_dir}/{datetime.now().strftime("%Y-%m-%d|%H:%M:%S")}-EPOCH-{epoch}")
             
 
 if __name__=="__main__":
@@ -270,6 +272,12 @@ if __name__=="__main__":
         "--log-freq",
         default=10,
         help = "Logging frequency.",
+        type = int,
+    )
+    parser.add_argument(
+        "--sve-freq",
+        default=10,
+        help = "Saving frequency.",
         type = int,
     )
     
