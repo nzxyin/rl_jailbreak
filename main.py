@@ -154,8 +154,8 @@ def main(args):
                 rewards = torch.tensor(rewards, device=device)
                 print("ALL REWARDS", rewards)
                 print("MAX REWARD", torch.max(rewards))
-                rewards = [torch.max(rewards)]
-                stats = ppo_trainer.step([generator_input_tokens[0]], [generator_output_tensors[0]], rewards) # only one sample update, since all are repeated
+                rewards = [torch.max(rewards)] * args.ppo_batch_size
+                stats = ppo_trainer.step(generator_input_tokens, generator_output_tensors, rewards) # only one sample update, since all are repeated
             else:
                 rewards = [torch.tensor([item], device=device) for item in rewards]
                 stats = ppo_trainer.step(generator_input_tokens, generator_output_tensors, rewards)
