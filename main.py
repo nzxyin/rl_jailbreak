@@ -8,6 +8,8 @@ from datasets import Dataset
 import os 
 import torch
 from datetime import datetime
+from transformers import AutoTokenizer
+from trl import AutoModelForCausalLMWithValueHead
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -15,7 +17,7 @@ def main(args):
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
     
-    run_name = f"{args.model_name}-{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}"
+    run_name = f"{args.experiment_name}-{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}"
     
     ppo_config = PPOConfig(
         model_name=args.generator_model,
@@ -29,7 +31,11 @@ def main(args):
         
     )
     writer = SummaryWriter(f"./logs/{run_name}")
-    generator = load_generator(args.generator_model)
+    # generator = load_generator(args.generator_model)
+    generator_tokenizer = AutoTokenizer.from_pretrained(args.generator_model, padding_side='left')
+    generator_tokenizer.pad_token = generator_tokenizer.eos_token
+    generator_model = AutoModelForCausalLMWithValueHead.from_pretrained(args.generator_model, device_map="auto")
+
     target = load_target(args.target_model)
     reward_model = load_reward(args.reward_model)
 
@@ -44,23 +50,27 @@ def main(args):
     # TODO encode dataset using target model and slice <BOS> token off
 
     generator_kwargs = {
-        "min_length": 100, # don't ignore the EOS token (see above)
+        "min_length": -1, # don't ignore the EOS token (see above)
         "top_k": 0.0, # no top-k sampling
         "top_p": 1.0, # no nucleus sampling
         "do_sample": True, # yes, we want to sample
-        "pad_token_id": generator.tokenizer.eos_token_id, # most decoder models don't have a padding token - use EOS token instead
+        "pad_token_id": generator_tokenizer.eos_token_id, # most decoder models don't have a padding token - use EOS token instead
         "max_new_tokens": args.generator_max_tokens, # specify how many tokens you want to generate at most
     }
 
     target_kwargs = {
-
+        "do_sample": True, # yes, we want to sample
+        "pad_token_id": target.tokenizer.eos_token_id, # most decoder models don't have a padding token - use EOS token instead
+        "max_new_tokens": args.target_max_tokens, # specify how many tokens you want to generate at most
+        # "min_new_tokens": args.target_min_tokens,
+        "repetition_penalty": 2,
     }
 
     ppo_trainer = PPOTrainer(
-        model=generator.model,
+        model=generator_model,
         config=ppo_config,
         dataset=dataset,
-        tokenizer=generator.tokenizer,
+        tokenizer=generator_tokenizer,
     )
     device = ppo_trainer.accelerator.device
 
@@ -68,14 +78,14 @@ def main(args):
 
     GLOBAL_ITER = 0
     # LOG_EVERY = 10
-    for epoch in tqdm(range(args.max_epoch)):
+    for epoch in tqdm(range(args.ppo_num_epochs)):
         for batch_idx, batch in tqdm(enumerate(ppo_trainer.dataloader)):
             
             print(f"Epoch {epoch} Batch {batch_idx}")
             
             generator_input_tokens = [ppo_trainer.tokenizer("Assign a role for a language model to perform the task: ", return_tensors='pt')['input_ids'].to(device).squeeze()] * ppo_config.batch_size
             
-            generator_output_tensors = [ppo_trainer.model.generate(i.unsqueeze(0), **generator_kwargs).squeeze()[-args.max_length:] for i in generator_input_tokens]
+            generator_output_tensors = [ppo_trainer.model.generate(i.unsqueeze(0), **generator_kwargs).squeeze() for i in generator_input_tokens]
             
             batch["attack"] = ["".join(ppo_trainer.tokenizer.batch_decode(i)) for i in generator_output_tensors]
             target_inputs = [" ".join([attack, query]) for attack, query in zip(batch["attack"], batch["query"])]
@@ -84,7 +94,7 @@ def main(args):
                     writer.add_text(f"target_input/target_input_attack[{i}]", attack, GLOBAL_ITER)
                     writer.add_text(f"target_input/target_input_query[{i}]", query, GLOBAL_ITER)
             
-            target_outputs = target.generate(target_inputs)
+            target_outputs = [target.generate(i, target_kwargs) for i in target_inputs]
             
             if GLOBAL_ITER % args.log_freq == 0:
                 for i, val in enumerate(target_outputs):
@@ -100,7 +110,7 @@ def main(args):
                                         batch["query"][0], 
                                         "\n\n 11111TARGET_OUTPUT", 
                                         target_outputs[0])
-            print("REWARDS_0", rewards[0])
+            print("REWARDS_1", rewards[0])
             print("22222SAMPLE Target Input",
                                         target_inputs[1], 
                                         "\n\n 22222SAMPLE ATTACK", 
@@ -109,8 +119,7 @@ def main(args):
                                         batch["query"][1], 
                                         "\n\n 22222TARGET_OUTPUT", 
                                         target_outputs[1])
-            
-            print("REWARDS_0", rewards[1])
+            print("REWARDS_2", rewards[1])
             if GLOBAL_ITER % args.log_freq == 0:
                 writer.add_histogram("reward/rewards", rewards, GLOBAL_ITER)
                 for i, val in enumerate(rewards):
@@ -128,10 +137,10 @@ def main(args):
             #     os.makedirs(args.save_dir)
             # ppo_trainer.save_model(args.save_dir)
             # generator.model.push_to_hub("my-fine-tuned-model-ppo")
-            if GLOBAL_ITER % args.save_iter == 0:
+            if GLOBAL_ITER % args.save_freq == 0:
                 # ppo_trainer.save_model(args.save_dir)
                 # get current time
-                ppo_trainer.save_pretrained(f"{args.save_dir}/{args.model_name}{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}-EPOCH-{epoch}") 
+                ppo_trainer.save_pretrained(f"{args.save_dir}/{args.experiment_name}{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}-EPOCH-{epoch}") 
                 print(f"Model saved at {args.save_dir}/{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}-EPOCH-{epoch}")
             
             GLOBAL_ITER += 1
@@ -147,7 +156,11 @@ if __name__=="__main__":
         "--generator-model", 
         default = "gpt2-medium", # default = "gpt2-medium",
         help = "Name of attack generator model.",
-        choices=["gpt2-medium", "lvwerra/gpt2-imdb", "/data/public_models/zephyr/zephyr-7b-beta"]
+        choices=["gpt2-medium", 
+                 "gpt2-large", 
+                 "gpt2-xl", 
+                 "lvwerra/gpt2-imdb", 
+                 "/data/public_models/zephyr/zephyr-7b-beta", "/sft"]
     )
     parser.add_argument(
         "--generator-max-tokens",
@@ -157,17 +170,10 @@ if __name__=="__main__":
     )
     
     parser.add_argument(
-        "--model_name",
+        "--experiment-name",
         type = str,
         default = "PPO-baseline",
-        help = "Model Name"
-    )
-    
-    parser.add_argument(
-        "--max_length",
-        type = int,
-        default = 150,
-        help = "Maximum length of generated text tokens"
+        help = "Experiment Name"
     )
     ##################################################
 
@@ -176,7 +182,9 @@ if __name__=="__main__":
         "--target-model",
         default = "/data/public_models/zephyr/zephyr-7b-beta", # HuggingFaceH4/zephyr-7b-beta
         help = "Name of target model.",
-        choices=["gpt2-medium", "lvwerra/gpt2-imdb", "/data/public_models/zephyr/zephyr-7b-beta"]
+        choices=["gpt2-medium", 
+                 "lvwerra/gpt2-imdb", 
+                 "/data/public_models/zephyr/zephyr-7b-beta", "/data/public_models/llama_v2_chat/Llama-2-7b-chat-hf"]
     )
     parser.add_argument(
         "--target-max-tokens",
@@ -253,23 +261,13 @@ if __name__=="__main__":
         type = int,
     )
     parser.add_argument(
-        "--sve-freq",
+        "--save-freq",
         default=10,
         help = "Saving frequency.",
         type = int,
     )
-    
 
     ##################################################
-
-    ########### Training parameters ##########
-    
-    parser.add_argument(
-        "--max-epoch",
-        default=100,
-        help = "Maximum number of epochs.",
-        type = int,
-    )
     
     args = parser.parse_args()
     main(args)

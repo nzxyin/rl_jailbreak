@@ -1,19 +1,19 @@
 from peft import LoraConfig, TaskType
 from transformers import AutoModelForSequenceClassification, AutoModelForCausalLM, AutoTokenizer
 from trl import RewardTrainer, RewardConfig, AutoModelForCausalLMWithValueHead
-from typing import Union, Tuple
+# from typing import Union, Tuple
 
-def load_generator(generator_name):
+def load_generator(generator_name: str):
     tokenizer = AutoTokenizer.from_pretrained(generator_name, padding_side='left')
-    model = AutoModelForCausalLMWithValueHead.from_pretrained(generator_name, device_map="auto")
-    return GeneratorModel(model, tokenizer,)
+    model = AutoModelForCausalLM.from_pretrained(generator_name, device_map="auto")
+    return GeneratorModel(model, tokenizer)
 
-def load_target(target_name):
-    tokenizer = AutoTokenizer.from_pretrained(target_name, padding_side='right')
+def load_target(target_name: str):
+    tokenizer = AutoTokenizer.from_pretrained(target_name, padding_side='left')
     model = AutoModelForCausalLM.from_pretrained(target_name, device_map="auto")
     return TargetModel(model, tokenizer)
 
-def load_reward(reward_name):
+def load_reward(reward_name: str):
     tokenizer = AutoTokenizer.from_pretrained(reward_name, padding_side='left')
     model = AutoModelForSequenceClassification.from_pretrained(reward_name, device_map="auto")
     return RewardModel(model, tokenizer)
@@ -23,51 +23,46 @@ class Model(object):
         self.model = model
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.device = self.model.device
     
     def generate(self, input):
         raise NotImplementedError()
     
 class GeneratorModel(Model):
     
-    def generate(self, input):
-        input_tensor = self.tokenizer(input, return_tensors="pt")
-        return self.model.generate(input_tensor)
+    def generate(self, input, generation_args={}):
+        input_tensor = self.tokenizer(input, return_tensors="pt").input_ids.to(self.device)
+        output_tensor = self.model.generate(input_tensor, **generation_args)
+        return self.tokenizer.decode(output_tensor, skip_special_tokens=True)
     
 class TargetModel(Model):
     def __init__(self, model, tokenizer) -> None:
         super().__init__(model, tokenizer)
         self.model.eval()
-        self.device = self.model.device
 
-    def generate(self, input: list[str]):
-        # input_tensor = self.tokenizer.encode(input, return_tensors="pt")
-        # input_tensor = [self.tokenizer.encode(i, return_tensors="pt") for i in input]
+    def generate(self, input: str, generation_args={}):
+        # Batch operation
         # input_tensor = self.tokenizer(input, 
-        #                             return_tensors="pt", max_length=256).input_ids.to(self.device)
-        # outputs = self.model.generate(input_tensor)
-        # return self.tokenizer.batch_decode(outputs)
-        
+        #                             return_tensors="pt", 
+        #                             padding='max_length', 
+        #                             return_attention_mask=True, 
+        #                             truncation=True, 
+        #                             max_length=256).input_ids.to(self.device)
         input_tensor = self.tokenizer(input, 
-                                    return_tensors="pt", 
-                                    padding='max_length', 
-                                    return_attention_mask=True, 
-                                    truncation=True, 
-                                    max_length=256).input_ids.to(self.device)
-        outputs = self.model.generate(input_tensor, 
-                                    min_length=100, 
-                                    top_k= 0.0, 
-                                    top_p= 1.0, 
-                                    do_sample= True, 
-                                    pad_token_id= self.tokenizer.eos_token_id, 
-                                    max_new_tokens= 150,)
+                                    return_tensors="pt")['input_ids'].to(self.device)
+        print("INPUTS", input_tensor, input_tensor.shape)
+        outputs = self.model.generate(input_tensor, **generation_args)
+        print("OUTPUTS", outputs.shape)
+        print(self.tokenizer.decode(outputs.squeeze()[input_tensor.shape[1]:], skip_special_tokens=True))
+        print("FULL TEXT")
+        print(self.tokenizer.decode(outputs.squeeze(), skip_special_tokens=True))
         print(input_tensor.shape[1])
-        return self.tokenizer.batch_decode(outputs[:, input_tensor.shape[1]:])
+        return self.tokenizer.decode(outputs.squeeze()[input_tensor.shape[1]:], skip_special_tokens=True)
     
 class RewardModel(Model):
     def __init__(self, model, tokenizer) -> None:
         super().__init__(model, tokenizer)
         self.model.eval()
-        self.device = self.model.device
         # self.peft_config = LoraConfig(
         #     task_type=TaskType.SEQ_CLS,
         #     inference_mode=False,
