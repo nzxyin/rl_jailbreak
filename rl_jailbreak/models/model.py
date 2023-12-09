@@ -50,13 +50,13 @@ class TargetModel(Model):
         #                             max_length=256).input_ids.to(self.device)
         input_tensor = self.tokenizer(input, 
                                     return_tensors="pt")['input_ids'].to(self.device)
-        print("INPUTS", input_tensor, input_tensor.shape)
+        # print("INPUTS", input_tensor, input_tensor.shape)
         outputs = self.model.generate(input_tensor, **generation_args)
-        print("OUTPUTS", outputs.shape)
-        print(self.tokenizer.decode(outputs.squeeze()[input_tensor.shape[1]:], skip_special_tokens=True))
-        print("FULL TEXT")
-        print(self.tokenizer.decode(outputs.squeeze(), skip_special_tokens=True))
-        print(input_tensor.shape[1])
+        # print("OUTPUTS", outputs.shape)
+        # print(self.tokenizer.decode(outputs.squeeze()[input_tensor.shape[1]:], skip_special_tokens=True))
+        # print("FULL TEXT")
+        # print(self.tokenizer.decode(outputs.squeeze(), skip_special_tokens=True))
+        # print(input_tensor.shape[1])
         return self.tokenizer.decode(outputs.squeeze()[input_tensor.shape[1]:], skip_special_tokens=True)
     
 class RewardModel(Model):

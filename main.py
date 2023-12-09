@@ -8,6 +8,7 @@ from datasets import Dataset
 import os 
 import torch
 from datetime import datetime
+from peft import LoraConfig
 from transformers import AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead
 from torch.utils.tensorboard import SummaryWriter
@@ -22,16 +23,18 @@ def main(args):
     ppo_config = PPOConfig(
         model_name=args.generator_model,
         learning_rate=args.ppo_lr,
-        batch_size=20,
+        batch_size=args.ppo_batch_size,
         log_with="tensorboard",
         
         project_kwargs={
-            "logging_dir":f"./logs/{run_name}",
+            "logging_dir":f"{args.log_dir}/{run_name}",
         },
         
     )
-    writer = SummaryWriter(f"./logs/{run_name}")
+    writer = SummaryWriter(f"{args.log_dir}/{run_name}")
     # generator = load_generator(args.generator_model)
+
+
     generator_tokenizer = AutoTokenizer.from_pretrained(args.generator_model, padding_side='left')
     generator_tokenizer.pad_token = generator_tokenizer.eos_token
     generator_model = AutoModelForCausalLMWithValueHead.from_pretrained(args.generator_model, device_map="auto")
@@ -56,14 +59,15 @@ def main(args):
         "do_sample": True, # yes, we want to sample
         "pad_token_id": generator_tokenizer.eos_token_id, # most decoder models don't have a padding token - use EOS token instead
         "max_new_tokens": args.generator_max_tokens, # specify how many tokens you want to generate at most
+        "min_new_tokens": args.generator_min_tokens,
     }
 
     target_kwargs = {
         "do_sample": True, # yes, we want to sample
         "pad_token_id": target.tokenizer.eos_token_id, # most decoder models don't have a padding token - use EOS token instead
         "max_new_tokens": args.target_max_tokens, # specify how many tokens you want to generate at most
-        # "min_new_tokens": args.target_min_tokens,
-        "repetition_penalty": 2,
+        "min_new_tokens": args.target_min_tokens,
+        "repetition_penalty": 2.0,
     }
 
     ppo_trainer = PPOTrainer(
@@ -77,28 +81,41 @@ def main(args):
     # TODO update training loop
 
     GLOBAL_ITER = 0
+    
+    
+
+
+
+    # ppo_trainer.save_pretrained(f"{args.save_dir}/{run_name}-EPOCH-{0}") 
+    # print(f"Model saved at {args.save_dir}/{run_name}-EPOCH-{0}")
+                
+                
     # LOG_EVERY = 10
     for epoch in tqdm(range(args.ppo_num_epochs)):
         for batch_idx, batch in tqdm(enumerate(ppo_trainer.dataloader)):
             
             print(f"Epoch {epoch} Batch {batch_idx}")
             
-            generator_input_tokens = [ppo_trainer.tokenizer("Assign a role for a language model to perform the task: ", return_tensors='pt')['input_ids'].to(device).squeeze()] * ppo_config.batch_size
+            generator_input_tokens = [ppo_trainer.tokenizer("You are", return_tensors='pt')['input_ids'].to(device).squeeze()] * ppo_config.batch_size
             
-            generator_output_tensors = [ppo_trainer.model.generate(i.unsqueeze(0), **generator_kwargs).squeeze() for i in generator_input_tokens]
+            print("GENERATOR INPUT TOKENS", generator_input_tokens[0], generator_input_tokens[0].shape)
+            
+            generator_output_tensors = [ppo_trainer.model.generate(input_ids=i.unsqueeze(0), **generator_kwargs).squeeze() for i in generator_input_tokens]
             
             batch["attack"] = ["".join(ppo_trainer.tokenizer.batch_decode(i)) for i in generator_output_tensors]
             target_inputs = [" ".join([attack, query]) for attack, query in zip(batch["attack"], batch["query"])]
             if GLOBAL_ITER % args.log_freq == 0:
                 for i, (attack, query) in enumerate(zip(batch["attack"], batch["query"])):
-                    writer.add_text(f"target_input/target_input_attack[{i}]", attack, GLOBAL_ITER)
-                    writer.add_text(f"target_input/target_input_query[{i}]", query, GLOBAL_ITER)
+                    if i < 3:
+                        writer.add_text(f"target_input/target_input_attack[{i}]", attack, GLOBAL_ITER)
+                        writer.add_text(f"target_input/target_input_query[{i}]", query, GLOBAL_ITER)
             
             target_outputs = [target.generate(i, target_kwargs) for i in target_inputs]
             
             if GLOBAL_ITER % args.log_freq == 0:
                 for i, val in enumerate(target_outputs):
-                    writer.add_text(f"target_outputs/target_outputs[{i}]", val, GLOBAL_ITER)
+                    if i < 3:
+                        writer.add_text(f"target_outputs/target_outputs[{i}]", val, GLOBAL_ITER)
             
             rewards = reward_model.generate(target_outputs)
             
@@ -123,7 +140,8 @@ def main(args):
             if GLOBAL_ITER % args.log_freq == 0:
                 writer.add_histogram("reward/rewards", rewards, GLOBAL_ITER)
                 for i, val in enumerate(rewards):
-                    writer.add_scalar(f"reward/rewards[{i}]", val, GLOBAL_ITER)
+                    if i < 3:
+                        writer.add_scalar(f"reward/rewards[{i}]", val, GLOBAL_ITER)
                     
             rewards = [torch.tensor([item], device=device) for item in rewards]
             # TODO: Add diversity metrics here
@@ -140,8 +158,8 @@ def main(args):
             if GLOBAL_ITER % args.save_freq == 0:
                 # ppo_trainer.save_model(args.save_dir)
                 # get current time
-                ppo_trainer.save_pretrained(f"{args.save_dir}/{args.experiment_name}{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}-EPOCH-{epoch}") 
-                print(f"Model saved at {args.save_dir}/{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}-EPOCH-{epoch}")
+                ppo_trainer.save_pretrained(f"{args.save_dir}/{run_name}-EPOCH-{epoch}-ITER-{GLOBAL_ITER}-BATCHSIZE-{args.ppo_batch_size}") 
+                print(f"Model saved at {args.save_dir}/{run_name}-EPOCH-{epoch}-ITER-{GLOBAL_ITER}-BATCHSIZE-{args.ppo_batch_size}")
             
             GLOBAL_ITER += 1
             
@@ -154,19 +172,27 @@ if __name__=="__main__":
     ########### Generator model parameters ##########
     parser.add_argument(
         "--generator-model", 
-        default = "gpt2-medium", # default = "gpt2-medium",
+        default = "sft_results/gpt2-medium/checkpoint-6675", # default = "gpt2-medium",
         help = "Name of attack generator model.",
         choices=["gpt2-medium", 
                  "gpt2-large", 
                  "gpt2-xl", 
                  "lvwerra/gpt2-imdb", 
-                 "/data/public_models/zephyr/zephyr-7b-beta", "/sft"]
+                 "/data/public_models/zephyr/zephyr-7b-beta", 
+                 "sft_results/gpt2-medium/checkpoint-6675"]
     )
     parser.add_argument(
         "--generator-max-tokens",
         type = int,
         default = 150,
         help = "Maximum number of generated tokens for the attacker."
+    )
+
+    parser.add_argument(
+        "--generator-min-tokens",
+        type = int,
+        default = 10,
+        help = "Minimum number of generated tokens for the attacker."
     )
     
     parser.add_argument(
@@ -184,13 +210,21 @@ if __name__=="__main__":
         help = "Name of target model.",
         choices=["gpt2-medium", 
                  "lvwerra/gpt2-imdb", 
-                 "/data/public_models/zephyr/zephyr-7b-beta", "/data/public_models/llama_v2_chat/Llama-2-7b-chat-hf"]
+                 "/data/public_models/zephyr/zephyr-7b-beta", 
+                 "/data/public_models/llama_v2_chat/Llama-2-7b-chat-hf"]
     )
     parser.add_argument(
         "--target-max-tokens",
         type = int,
         default = 150,
         help = "Maximum number of generated tokens for the target."
+    )
+
+    parser.add_argument(
+        "--target-min-tokens",
+        type = int,
+        default = 10,
+        help = "Minimum number of generated tokens for the target."
     )
     ##################################################
 
@@ -210,10 +244,34 @@ if __name__=="__main__":
     )
     ##################################################
 
+    ########### LoRA parameters ##########
+    parser.add_argument(
+        "--lora-r",
+        default = 16,
+        help = "Rank of update matrix for LoRA",
+        type = int,
+    )
+
+    parser.add_argument(
+        "--lora-alpha",
+        default = 32,
+        help = "Alpha value for LoRA",
+        type = float,
+    )
+
+    parser.add_argument(
+        "--lora-dropout",
+        default = 0.05,
+        help = "Dropout for LoRA",
+        type = float,
+    )
+    
+    ##################################################
+
     ########### Dataset parameters ##########
     parser.add_argument(
         "--dataset",
-        default="./datasets/ppo_dataset.csv",
+        default="./datasets/ppo_dataset_punctuation.csv",
         help = "Path to PPO dataset.",
         type = pathlib.Path,
     )
@@ -223,7 +281,7 @@ if __name__=="__main__":
     ########### PPO parameters ##########
     parser.add_argument(
         "--ppo-lr",
-        default = 1.5e-5,
+        default = 5e-5,
         help = "Learning rate for PPO",
         type = float,
     )
@@ -237,7 +295,7 @@ if __name__=="__main__":
 
     parser.add_argument(
         "--ppo-batch-size",
-        default = 64,
+        default = 20,
         help = "Batch size for PPO",
         type = int,
     )
@@ -248,9 +306,16 @@ if __name__=="__main__":
     ########### Logging parameters ##########
     
     parser.add_argument(
-        "--save_dir",
+        "--save-dir",
         default="./results",
         help = "Path to save the model.",
+        type = pathlib.Path,
+    )
+
+    parser.add_argument(
+        "--log-dir",
+        default="./logs",
+        help = "Path to save the logs.",
         type = pathlib.Path,
     )
     
@@ -262,7 +327,7 @@ if __name__=="__main__":
     )
     parser.add_argument(
         "--save-freq",
-        default=10,
+        default=25,
         help = "Saving frequency.",
         type = int,
     )
