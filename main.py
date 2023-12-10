@@ -18,7 +18,7 @@ def main(args):
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
     
-    run_name = f"{args.experiment_name}-{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}"
+    run_name = f"{args.experiment_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
     
     ppo_config = PPOConfig(
         model_name=args.generator_model,

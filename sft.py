@@ -14,7 +14,7 @@ from datetime import datetime
 def main(args):
 
     # Handle Logging
-    run_name = f"{args.generator_model}-{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}"
+    run_name = f"{args.generator_model}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
     save_dir = "/".join([str(args.save_dir), run_name])
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
