@@ -14,7 +14,7 @@ from datetime import datetime
 def main(args):
 
     # Handle Logging
-    run_name = f"{args.generator_model}-{datetime.now().strftime('%Y-%m-%d|%H:%M:%S')}"
+    run_name = f"{args.generator_model}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
     save_dir = "/".join([str(args.save_dir), run_name])
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
@@ -40,7 +40,7 @@ def main(args):
     model = AutoModelForCausalLM.from_pretrained(args.generator_model)
 
     training_args = TrainingArguments(
-        output_dir=run_name,
+        output_dir=save_dir,
         logging_strategy='epoch',
         save_strategy='epoch',
         evaluation_strategy='epoch',
