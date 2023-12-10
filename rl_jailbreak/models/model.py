@@ -24,6 +24,7 @@ class Model(object):
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.device = self.model.device
+        self.model.eval()
     
     def generate(self, input):
         raise NotImplementedError()
@@ -33,12 +34,11 @@ class GeneratorModel(Model):
     def generate(self, input, generation_args={}):
         input_tensor = self.tokenizer(input, return_tensors="pt").input_ids.to(self.device)
         output_tensor = self.model.generate(input_tensor, **generation_args)
-        return self.tokenizer.decode(output_tensor, skip_special_tokens=True)
+        return self.tokenizer.decode(output_tensor.squeeze(), skip_special_tokens=True)
     
 class TargetModel(Model):
     def __init__(self, model, tokenizer) -> None:
         super().__init__(model, tokenizer)
-        self.model.eval()
 
     def generate(self, input: str, generation_args={}):
         # Batch operation
@@ -62,7 +62,6 @@ class TargetModel(Model):
 class RewardModel(Model):
     def __init__(self, model, tokenizer) -> None:
         super().__init__(model, tokenizer)
-        self.model.eval()
         # self.peft_config = LoraConfig(
         #     task_type=TaskType.SEQ_CLS,
         #     inference_mode=False,

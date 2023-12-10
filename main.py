@@ -32,8 +32,6 @@ def main(args):
         
     )
     writer = SummaryWriter(f"{args.log_dir}/{run_name}")
-    # generator = load_generator(args.generator_model)
-
 
     generator_tokenizer = AutoTokenizer.from_pretrained(args.generator_model, padding_side='left')
     generator_tokenizer.pad_token = generator_tokenizer.eos_token
@@ -82,15 +80,6 @@ def main(args):
 
     GLOBAL_ITER = 0
     
-    
-
-
-
-    # ppo_trainer.save_pretrained(f"{args.save_dir}/{run_name}-EPOCH-{0}") 
-    # print(f"Model saved at {args.save_dir}/{run_name}-EPOCH-{0}")
-                
-                
-    # LOG_EVERY = 10
     for epoch in tqdm(range(args.ppo_num_epochs)):
         for batch_idx, batch in tqdm(enumerate(ppo_trainer.dataloader)):
             
@@ -161,13 +150,8 @@ def main(args):
                 stats = ppo_trainer.step(generator_input_tokens, generator_output_tensors, rewards)
             ppo_trainer.log_stats(stats, batch, rewards)
     
-            # if not os.path.exists(args.save_dir):
-            #     os.makedirs(args.save_dir)
-            # ppo_trainer.save_model(args.save_dir)
-            # generator.model.push_to_hub("my-fine-tuned-model-ppo")
             if GLOBAL_ITER % args.save_freq == 0:
-                # ppo_trainer.save_model(args.save_dir)
-                # get current time
+                
                 ppo_trainer.save_pretrained(f"{args.save_dir}/{run_name}-EPOCH-{epoch}-ITER-{GLOBAL_ITER}-BATCHSIZE-{args.ppo_batch_size}") 
                 print(f"Model saved at {args.save_dir}/{run_name}-EPOCH-{epoch}-ITER-{GLOBAL_ITER}-BATCHSIZE-{args.ppo_batch_size}")
             
@@ -189,7 +173,8 @@ if __name__=="__main__":
                  "gpt2-xl", 
                  "lvwerra/gpt2-imdb", 
                  "/data/public_models/zephyr/zephyr-7b-beta", 
-                 "sft_results/gpt2-medium/checkpoint-6675"]
+                 "sft_results/gpt2-medium/checkpoint-6675",
+                 "sft_results/gpt2-xl-2023-12-09-04-34-53/checkpoint-6750"]
     )
     parser.add_argument(
         "--generator-max-tokens",
