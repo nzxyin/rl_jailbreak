@@ -70,9 +70,9 @@ if __name__=="__main__":
     ########### Generator model parameters ##########
     parser.add_argument(
         "--generator-model", 
-        default = "gpt2-medium",
+        default = "/data/public_models/vicuna/vicuna-7b-v1.3",
         help = "Name of attack generator model.",
-        choices=["gpt2-medium", "gpt2-large", "gpt2-xl"]
+        choices=["gpt2-medium", "gpt2-large", "gpt2-xl", "/data/public_models/vicuna/vicuna-7b-v1.3"]
     )
     
     ##################################################
@@ -83,6 +83,13 @@ if __name__=="__main__":
         default="./datasets/sft_dataset.csv",
         help = "Path to SFT dataset.",
         type = pathlib.Path,
+    )
+
+    parser.add_argument(
+        "--sft-eval-size",
+        default=0.1,
+        help = "Eval Dataset Size for SFT",
+        type = float,
     )
     
     ##################################################
