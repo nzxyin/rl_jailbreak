@@ -40,7 +40,7 @@ def main(args):
     model = AutoModelForCausalLM.from_pretrained(args.generator_model)
 
     training_args = TrainingArguments(
-        output_dir=run_name,
+        output_dir=save_dir,
         logging_strategy='epoch',
         save_strategy='epoch',
         evaluation_strategy='epoch',
