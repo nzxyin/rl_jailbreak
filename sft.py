@@ -109,7 +109,6 @@ if __name__=="__main__":
         type = float,
     )
     
-    # TODO: add other PPO params
     ##################################################
     
     ########### Logging parameters ##########
