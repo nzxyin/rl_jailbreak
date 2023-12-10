@@ -14,7 +14,8 @@ from datetime import datetime
 def main(args):
 
     # Handle Logging
-    run_name = f"{args.generator_model}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+    model_name = args.generator_model.split("/")[-1]
+    run_name = f"{model_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
     save_dir = "/".join([str(args.save_dir), run_name])
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
@@ -159,12 +160,6 @@ if __name__=="__main__":
         type = int,
     )
 
-    parser.add_argument(
-        "--sft-eval-size",
-        default=0.1,
-        help = "Eval Dataset Size for SFT",
-        type = float,
-    )
 
     ##################################################
 
