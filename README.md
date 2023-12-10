@@ -11,4 +11,11 @@ pip install -e .
 ```
 
 ### Testing
-TODO
+#### SFT
+```
+python sft.py --generator-model [GENERATOR_MODEL_PATH] --target-model [TARGET_MODEL_PATH]
+```
+#### PPO
+```
+python main.py --generator-model “sft_results/gpt2-xl/checkpoint-6750” --generator-max-tokens 250 --generator-min-tokens 150 --target-model /data/public_models/vicuna/vicuna-7b-v1.3 --target-max-tokens 250 --target-min-tokens 150
+```
