@@ -11,6 +11,7 @@ pip install -e .
 ```
 
 ### Testing
+Warning: Currently our code only supports single GPU training. 
 #### SFT
 ```
 python sft.py --generator-model [GENERATOR_MODEL_PATH] --target-model [TARGET_MODEL_PATH]
